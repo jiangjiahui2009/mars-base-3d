@@ -1,0 +1,2452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terran Base - 3D StarCraft II Style</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+canvas { display: block; }
+#ui {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; font-family: 'Courier New', monospace;
+}
+#resource-panel {
+  position: absolute; top: 16px; right: 20px;
+  background: rgba(10,15,25,0.75); border: 1px solid rgba(60,100,160,0.3);
+  padding: 12px 20px; border-radius: 4px;
+}
+#resource-panel .label { color: rgba(80,160,255,0.7); font-size: 11px; letter-spacing: 2px; }
+#resource-panel .value { color: rgba(100,200,255,0.9); font-size: 22px; font-weight: bold; }
+#loading {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: rgba(80,160,255,0.9); font-family: 'Courier New', monospace;
+  font-size: 14px; letter-spacing: 3px; text-align: center;
+}
+#loading-bar-bg {
+  width: 200px; height: 3px; background: rgba(60,100,160,0.3);
+  margin: 12px auto 0; border-radius: 2px;
+}
+#loading-bar { height: 100%; width: 0%; background: rgba(80,160,255,0.8); border-radius: 2px; transition: width 0.2s; }
+#corner-tl, #corner-tr, #corner-bl, #corner-br {
+  position: absolute; width: 24px; height: 24px;
+}
+#corner-tl { top: 8px; left: 8px; border-top: 2px solid rgba(70,110,170,0.3); border-left: 2px solid rgba(70,110,170,0.3); }
+#corner-tr { top: 8px; right: 8px; border-top: 2px solid rgba(70,110,170,0.3); border-right: 2px solid rgba(70,110,170,0.3); }
+#corner-bl { bottom: 8px; left: 8px; border-bottom: 2px solid rgba(70,110,170,0.3); border-left: 2px solid rgba(70,110,170,0.3); }
+#corner-br { bottom: 8px; right: 8px; border-bottom: 2px solid rgba(70,110,170,0.3); border-right: 2px solid rgba(70,110,170,0.3); }
+#border { position: absolute; top: 4px; left: 4px; right: 4px; bottom: 4px; border: 1px solid rgba(40,60,100,0.15); }
+
+/* 坐标选择器 */
+#coord-btn {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: rgba(10,15,25,0.85); border: 1px solid rgba(60,100,160,0.5);
+  color: rgba(80,160,255,0.9); font-family: 'Courier New', monospace;
+  font-size: 12px; letter-spacing: 2px; padding: 8px 18px;
+  border-radius: 4px; cursor: pointer; pointer-events: all;
+  transition: background 0.2s, border-color 0.2s;
+  user-select: none;
+}
+#coord-btn:hover { background: rgba(20,40,80,0.95); border-color: rgba(80,140,255,0.8); }
+#coord-btn.active { background: rgba(0,40,100,0.95); border-color: rgba(100,180,255,1); color: #fff; }
+#coord-panel {
+  position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%);
+  background: rgba(10,15,25,0.92); border: 1px solid rgba(60,100,160,0.4);
+  color: rgba(100,200,255,0.95); font-family: 'Courier New', monospace;
+  font-size: 13px; padding: 10px 20px; border-radius: 4px;
+  display: none; text-align: center; pointer-events: none;
+  white-space: nowrap;
+}
+#coord-panel span { color: rgba(255,220,80,1); font-weight: bold; }
+#mineral-panel {
+  position: absolute; top: 60px; left: 16px;
+  width: 220px; padding: 12px 14px;
+  background: rgba(5,12,24,0.88);
+  border: 1px solid rgba(70,110,170,0.3);
+  border-radius: 4px;
+  color: rgba(160,200,255,0.9);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  backdrop-filter: blur(6px);
+  user-select: none;
+}
+.mineral-panel-header {
+  display: flex; align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(70,110,170,0.25);
+  margin-bottom: 8px;
+}
+.mineral-panel-title {
+  color: rgba(80,160,255,0.85);
+  font-size: 11px;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+#mineral-panel-close:hover { opacity: 1; }
+#mineral-panel-list {
+  color: rgba(180,210,255,0.8);
+  line-height: 1.6;
+}
+/* SCV Panel - bottom popup */
+#scv-panel {
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%);
+  width: 90%; max-width: 860px;
+  background: rgba(5,12,24,0.92);
+  border: 1px solid rgba(70,110,170,0.3);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 14px 18px 18px;
+  color: rgba(160,200,255,0.9);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+  user-select: none;
+  transition: transform 0.35s cubic-bezier(0.22,0.68,0,1.1);
+  z-index: 100;
+}
+#scv-panel.open { transform: translateX(-50%) translateY(0); }
+#scv-panel-close {
+  position: absolute; top: 8px; right: 14px;
+  cursor: pointer; opacity: 0.5; font-size: 16px;
+  transition: opacity 0.2s;
+}
+#scv-panel-close:hover { opacity: 1; }
+/* Building 3 Panel */
+#house-panel {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%);
+  background: linear-gradient(135deg, rgba(10,18,32,0.95), rgba(15,25,45,0.95));
+  border: 1px solid rgba(60,120,200,0.3);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 16px 28px 14px;
+  min-width: 780px;
+  z-index: 100;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.5);
+}
+#house-panel.open { transform: translateX(-50%) translateY(0); }
+#house-panel-close {
+  position: absolute; top: 8px; right: 12px;
+  color: rgba(150,180,220,0.6); cursor: pointer; font-size: 14px;
+  transition: opacity 0.2s;
+}
+#house-panel-close:hover { opacity: 1; }
+#house-panel-content {
+  padding-top: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.house-panel-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.house-panel-icon img {
+  max-height: 110px;
+  max-width: 120px;
+  object-fit: contain;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(80,160,255,0.3));
+}
+.house-panel-body {
+  flex: 1;
+  min-width: 0;
+}
+.house-panel-header {
+  color: rgba(80,160,255,0.9);
+  font-size: 12px; letter-spacing: 1px; font-weight: bold;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(70,110,170,0.15);
+}
+.house-skill-list {
+  list-style: none; padding: 0; margin: 0;
+  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 2px 16px;
+}
+.house-skill-list li::before { content: none; }
+.house-skill-list li {
+  padding: 3px 0;
+  color: rgba(180,210,255,0.75);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* Building 3 Panel */
+#building3-panel {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%);
+  background: linear-gradient(135deg, rgba(10,18,32,0.95), rgba(15,25,45,0.95));
+  border: 1px solid rgba(60,120,200,0.3);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 16px 28px 14px;
+  min-width: 520px; max-width: 680px;
+  z-index: 100;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.5);
+}
+#building3-panel.open { transform: translateX(-50%) translateY(0); }
+#building3-panel-close {
+  position: absolute; top: 8px; right: 12px;
+  color: rgba(150,180,220,0.6); cursor: pointer; font-size: 14px;
+}
+#building3-panel-close:hover { opacity: 1; }
+#building3-panel-content { padding-top: 4px; }
+.b3-panel-header {
+  color: rgba(80,160,255,0.9);
+  font-size: 13px; letter-spacing: 1px; font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(70,110,170,0.15);
+}
+.b3-panel-body {
+  color: rgba(180,210,255,0.75);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.b3-panel-body p { margin: 0 0 8px 0; }
+.b3-panel-body strong { color: rgba(100,180,255,0.9); }
+.b3-panel-body ul {
+  list-style: none; padding: 0; margin: 0;
+}
+.b3-panel-body ul li {
+  padding: 2px 0;
+  color: rgba(160,200,255,0.7);
+  font-size: 12px;
+}
+.b3-panel-body ul li::before {
+  content: '▸ ';
+  color: rgba(80,160,255,0.5);
+}
+
+/* ====== Astronaut Panel (right side) ====== */
+#astronaut-panel {
+  position: fixed; top: 50%; right: 0; transform: translateY(-50%) translateX(100%);
+  background: linear-gradient(135deg, rgba(10,18,32,0.95), rgba(15,25,45,0.95));
+  border: 1px solid rgba(60,120,200,0.3);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  padding: 16px 28px 14px;
+  min-width: 340px; max-width: 465px;
+  z-index: 100;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  backdrop-filter: blur(12px);
+  box-shadow: -4px 0 30px rgba(0,0,0,0.5);
+}
+#astronaut-panel.open { transform: translateY(-50%) translateX(0); }
+#astronaut-panel-close {
+  position: absolute; top: 8px; right: 12px;
+  color: rgba(150,180,220,0.6); cursor: pointer; font-size: 14px;
+}
+#astronaut-panel-close:hover { opacity: 1; }
+#astronaut-panel-content { padding-top: 4px; }
+.astro-panel-header {
+  color: rgba(80,160,255,0.9);
+  font-size: 14px; letter-spacing: 1px; font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(70,110,170,0.15);
+}
+.astro-panel-intro {
+  color: rgba(180,210,255,0.7);
+  font-size: 12px;
+  line-height: 1.8;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(70,110,170,0.1);
+}
+.astro-skill-list {
+  list-style: none; padding: 0; margin: 0;
+}
+.astro-skill-list li {
+  padding: 5px 0;
+  color: rgba(180,210,255,0.75);
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.astro-skill-list li::before { content: none; }
+.astro-skill-list .skill-check {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 1.5px solid rgba(80,160,255,0.5);
+  border-radius: 3px;
+  text-align: center;
+  line-height: 14px;
+  font-size: 10px;
+  background: rgba(0,0,0,0.3);
+  flex-shrink: 0;
+}
+.astro-skill-desc {
+  display: block;
+  width: 100%;
+  color: rgba(140,170,210,0.55);
+  font-size: 11px;
+  line-height: 1.5;
+  padding-left: 20px;
+  margin-top: 1px;
+}
+.skill-locked {
+  color: rgba(120,140,170,0.5);
+}
+.skill-locked .astro-skill-desc {
+  color: rgba(100,120,150,0.35);
+}
+
+/* ====== Command Center Panel (bottom, 3-column) ====== */
+#cc-panel {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%);
+  background: linear-gradient(135deg, rgba(10,18,32,0.95), rgba(15,25,45,0.95));
+  border: 1px solid rgba(60,120,200,0.3);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  padding: 16px 24px 14px;
+  min-width: 740px; max-width: 920px;
+  z-index: 100;
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -4px 30px rgba(0,0,0,0.5);
+}
+#cc-panel.open { transform: translateX(-50%) translateY(0); }
+#cc-panel-close {
+  position: absolute; top: 8px; right: 12px;
+  color: rgba(150,180,220,0.6); cursor: pointer; font-size: 14px;
+}
+#cc-panel-close:hover { opacity: 1; }
+#cc-panel-content { padding-top: 4px; }
+.cc-panel-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+.cc-section {
+  flex: 1;
+  padding: 0 18px;
+  border-right: 1px solid rgba(70,110,170,0.2);
+}
+.cc-section:last-child { border-right: none; }
+.cc-section-base { text-align: center; flex: 0 0 130px; }
+.cc-section-title {
+  color: rgba(80,160,255,0.9);
+  font-size: 11px; letter-spacing: 1.5px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(70,110,170,0.15);
+}
+.cc-stat-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+.cc-stat-label {
+  color: rgba(160,190,230,0.65);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cc-stat-value {
+  color: rgba(200,220,255,0.9);
+  font-size: 13px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+.cc-stat-level {
+  color: rgba(100,200,255,0.95);
+  font-size: 28px;
+  font-weight: bold;
+}
+.cc-section-base .cc-stat-item {
+  justify-content: center;
+}
+.cc-stat-token {
+  color: rgba(80,200,160,0.9);
+  font-variant-numeric: tabular-nums;
+}
+.cc-stat-sub-list {
+  padding-left: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.cc-stat-sub-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+}
+.cc-stat-sub-label {
+  color: rgba(140,170,210,0.55);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cc-stat-sub-value {
+  color: rgba(180,210,255,0.8);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cc-stat-product {
+  color: rgba(100,180,255,0.75);
+  font-size: 12px;
+}
+#scv-panel-content {
+  display: flex; gap: 0; align-items: flex-start;
+}
+.scv-panel-section {
+  flex: 1; padding: 0 16px;
+  border-right: 1px solid rgba(70,110,170,0.2);
+}
+.scv-panel-section:last-child { border-right: none; }
+.scv-panel-icon {
+  flex: 0 0 80px; display: flex; align-items: center; justify-content: center;
+  padding: 0 12px 0 8px;
+}
+.scv-panel-icon img {
+  max-height: 80px;
+  max-width: 80px;
+  object-fit: contain;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px rgba(80,160,255,0.3));
+}
+.scv-section-title {
+  color: rgba(80,160,255,0.85);
+  font-size: 11px; letter-spacing: 1.5px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(70,110,170,0.15);
+}
+.scv-panel-section ul {
+  list-style: none; padding: 0; margin: 0;
+}
+.scv-panel-section li {
+  padding: 3px 0;
+  color: rgba(180,210,255,0.75);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.scv-panel-section li::before {
+  content: '▸ ';
+  color: rgba(80,160,255,0.5);
+}
+.status-active { color: rgba(100,220,150,0.85) !important; }
+.status-active::before { content: '● ' !important; color: rgba(80,200,130,0.7) !important; }
+.status-idle { color: rgba(255,200,80,0.7) !important; }
+.scv-skill-list li::before { content: none; }
+.scv-skill-list .skill-check {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 1.5px solid rgba(80,160,255,0.5);
+  border-radius: 3px;
+  text-align: center;
+  line-height: 14px;
+  font-size: 10px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: rgba(0,0,0,0.3);
+}
+.skill-unlocked .skill-check {
+  background: rgba(50,160,80,0.25);
+  border-color: rgba(50,200,100,0.7);
+  color: rgba(80,220,120,0.9);
+  font-weight: bold;
+}
+.skill-locked .skill-check {
+  background: rgba(0,0,0,0.3);
+  border-color: rgba(80,160,255,0.3);
+  color: transparent;
+}
+.skill-locked {
+  color: rgba(120,140,170,0.5);
+}
+.status-idle::before { content: '○ ' !important; color: rgba(255,200,80,0.5) !important; }
+.mineral-panel-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(70,110,170,0.1);
+}
+.mineral-panel-item:last-child { border-bottom: none; }
+.mineral-panel-item img {
+  width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0;
+}
+.mineral-panel-item span {
+  font-size: 11px; color: rgba(200,220,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#coord-cursor {
+  position: fixed; pointer-events: none;
+  width: 20px; height: 20px;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+#coord-cursor::before, #coord-cursor::after {
+  content: ''; position: absolute; background: rgba(100,200,255,0.9);
+}
+#coord-cursor::before { width: 1px; height: 20px; left: 50%; top: 0; }
+#coord-cursor::after  { width: 20px; height: 1px; top: 50%; left: 0; }
+#hover-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: rgba(10,18,32,0.9);
+  border: 1px solid rgba(60,120,200,0.4);
+  border-radius: 6px;
+  padding: 5px 12px;
+  color: rgba(180,210,255,0.95);
+  font-size: 13px;
+  font-family: 'Exo 2', 'Helvetica Neue', Arial, sans-serif;
+  white-space: nowrap;
+  z-index: 200;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  transform: translate(-50%, -130%);
+  transition: opacity 0.15s ease;
+}
+</style>
+</head>
+<body>
+<div id="loading">
+  <div>LOADING ASSETS</div>
+  <div id="loading-bar-bg"><div id="loading-bar"></div></div>
+</div>
+<div id="ui" style="display:none">
+  <div id="resource-panel">
+    <div class="label">⬡ TOKEN</div>
+    <div class="value" id="mineral-count">1.00亿</div>
+  </div>
+  <div id="corner-tl"></div><div id="corner-tr"></div>
+  <div id="corner-bl"></div><div id="corner-br"></div>
+  <div id="border"></div>
+  <!-- 坐标选择器 -->
+  <div id="coord-panel">📍 点击位置：X = <span id="cx">--</span> &nbsp; Z = <span id="cz">--</span></div>
+  <button id="coord-btn">📐 坐标拾取</button>
+  <!-- 矿区详情面板 -->
+  <div id="mineral-panel" style="display:none">
+    <div class="mineral-panel-header">
+      <span class="mineral-panel-title">🤖 AI大模型</span>
+      <span id="mineral-panel-close" style="cursor:pointer;margin-left:auto;opacity:0.6;font-size:14px">✕</span>
+    </div>
+    <div id="mineral-panel-list">
+      <!-- 列表内容由用户后续定义 -->
+    </div>
+  </div>
+  <!-- 采矿车详情面板（底部弹出） -->
+  <div id="scv-panel" style="display:none">
+    <div id="scv-panel-close">✕</div>
+    <div id="scv-panel-content">
+      <!-- 最左：矿车图示 -->
+      <div class="scv-panel-section scv-panel-icon">
+        <img src="scv_diagram.png" alt="SCV" />
+      </div>
+      <!-- 左：龙虾类型 -->
+      <div class="scv-panel-section scv-panel-types">
+        <div class="scv-section-title">龙虾类型</div>
+        <ul>
+          <li>Claud Code</li>
+          <li>Openclaw</li>
+          <li>Cursor</li>
+          <li>Workbuddy</li>
+          <li>Jarvisclaw</li>
+          <li>Qclaw</li>
+        </ul>
+      </div>
+      <!-- 中：已解锁技能 -->
+      <div class="scv-panel-section scv-panel-skills">
+        <div class="scv-section-title">已解锁技能</div>
+        <ul class="scv-skill-list">
+          <li class="skill-unlocked"><span class="skill-check">✓</span> Self-Improving Agent</li>
+          <li class="skill-unlocked"><span class="skill-check">✓</span> Agent Browser</li>
+          <li class="skill-unlocked"><span class="skill-check">✓</span> Skill Vetter</li>
+          <li class="skill-unlocked"><span class="skill-check">✓</span> Find Skills</li>
+          <li class="skill-locked"><span class="skill-check"></span> Summarize</li>
+        </ul>
+      </div>
+      <!-- 右：工作状况 -->
+      <div class="scv-panel-section scv-panel-status">
+        <div class="scv-section-title">工作状况</div>
+        <ul>
+          <li class="status-active">Application development...</li>
+          <li class="status-active">Daily work summary...</li>
+          <li class="status-active">Daily intelligence collection...</li>
+          <li class="status-active">Automatic content generation...</li>
+          <li class="status-idle">Idle</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Building 3 Panel (bottom popup) -->
+<div id="house-panel" style="display:none">
+  <div id="house-panel-close">✕</div>
+  <div id="house-panel-content">
+    <div class="house-panel-icon">
+      <img src="github_diagram.png" alt="GitHub" />
+    </div>
+    <div class="house-panel-body">
+      <div class="house-panel-header">去 Github 解锁更多建筑与材料 → 二次开发</div>
+      <ul class="house-skill-list">
+      <li class="skill-unlocked"><span class="skill-check">✓</span> React</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> Node.js</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> oh-my-claude</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> build-your-own-x</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> CRMEB</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> Syncthing</li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span> Uptime Kuma</li>
+      <li class="skill-locked"><span class="skill-check"></span> wechat-java-tool</li>
+      <li class="skill-locked"><span class="skill-check"></span> eecg-boot</li>
+      <li class="skill-locked"><span class="skill-check"></span> Flutter</li>
+      <li class="skill-locked"><span class="skill-check"></span> workerman/webman</li>
+      <li class="skill-locked"><span class="skill-check"></span> saleor</li>
+      <li class="skill-locked"><span class="skill-check"></span> erpnext</li>
+      <li class="skill-locked"><span class="skill-check"></span> btcpayserve</li>
+      <li class="skill-locked"><span class="skill-check"></span> laravel-learning</li>
+      <li class="skill-locked"><span class="skill-check"></span> mattermost</li>
+      <li class="skill-locked"><span class="skill-check"></span> prestashop</li>
+      <li class="skill-locked"><span class="skill-check"></span> hoteldruid</li>
+    </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Building 3 Panel (bottom popup) -->
+<div id="building3-panel" style="display:none">
+  <div id="building3-panel-close">✕</div>
+  <div id="building3-panel-content">
+    <div class="b3-panel-header">自制应用1: 火星基地</div>
+    <div class="b3-panel-body">
+      <p>这是一个 <strong>StarCraft 2 风格的 3D 交互场景</strong>，用 Three.js 在单个 HTML 文件里实现的。是一个纯前端代码写的网站，用星际争霸基地的视觉隐喻来展示对 openclaw 的简要理解。特点：</p>
+      <ul>
+        <li>GLTFLoader 加载多个 PBR 模型</li>
+        <li>程序化地形纹理（荒漠噪点/裂缝/碎石）</li>
+        <li>方向光阴影 + 环境粒子系统</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Astronaut Panel (right side popup) -->
+<div id="astronaut-panel" style="display:none">
+  <div id="astronaut-panel-close">✕</div>
+  <div id="astronaut-panel-content">
+    <div class="astro-panel-header">human hub</div>
+    <div class="astro-panel-intro">为了更好使用小龙虾，实际上不只是龙虾在clawhub里面学习与升级，对于使用者来说也在解锁与升级，我把这地方叫做"human hub"。双向成长，才能做出更有价值的东西出来，我们来一起探索。</div>
+    <ul class="astro-skill-list">
+      <li class="skill-unlocked"><span class="skill-check">✓</span>元技能：需求与目标表达<span class="astro-skill-desc">逐步能够持续接近结果，消除一些返工成本…</span></li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span>元技能：多种对话模式<span class="astro-skill-desc">Plan模式、反问模式、讨论模式、边界限制模式…</span></li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span>元技能：对龙虾通识理解<span class="astro-skill-desc">让Agent发挥水平，比如任务分解、多agent编排…</span></li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span>元技能：制造工具<span class="astro-skill-desc">可以将重复工作流，工具化…</span></li>
+      <li class="skill-unlocked"><span class="skill-check">✓</span>元技能：对开发架构的通识理解<span class="astro-skill-desc">基础设施、架构、系统稳定性…</span></li>
+      <li class="skill-locked"><span class="skill-check"></span>元技能：并行管理<span class="astro-skill-desc">并行安排、管理、验收</span></li>
+      <li class="skill-locked"><span class="skill-check"></span>专技能：图文、视频的专业表达<span class="astro-skill-desc"></span></li>
+      <li class="skill-locked"><span class="skill-check"></span>专技能：内容创作的专业需求表达<span class="astro-skill-desc"></span></li>
+      <li class="skill-locked"><span class="skill-check"></span>专技能：商业化能力<span class="astro-skill-desc"></span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- Command Center Panel (bottom popup) -->
+<div id="cc-panel" style="display:none">
+  <div id="cc-panel-close">✕</div>
+  <div id="cc-panel-content">
+    <div class="cc-panel-body">
+      <!-- 右：基地信息 -->
+      <div class="cc-section cc-section-base">
+        <div class="cc-section-title">火星基地</div>
+        <div class="cc-stat-item"><span class="cc-stat-label">综合等级</span><span class="cc-stat-value cc-stat-level">3</span></div>
+      </div>
+      <!-- 中：能力与解锁 -->
+      <div class="cc-section cc-section-ability">
+        <div class="cc-section-title">能力与解锁</div>
+        <div class="cc-stat-item"><span class="cc-stat-label">龙虾等级</span><span class="cc-stat-value">6</span></div>
+        <div class="cc-stat-sub-list">
+          <div class="cc-stat-sub-item"><span class="cc-stat-sub-label">解锁技能</span><span class="cc-stat-sub-value">26</span></div>
+          <div class="cc-stat-sub-item"><span class="cc-stat-sub-label">解锁建筑</span><span class="cc-stat-sub-value">3</span></div>
+        </div>
+        <div class="cc-stat-item"><span class="cc-stat-label">human等级</span><span class="cc-stat-value">2</span></div>
+        <div class="cc-stat-sub-list">
+          <div class="cc-stat-sub-item"><span class="cc-stat-sub-label">解锁技能</span><span class="cc-stat-sub-value">5</span></div>
+        </div>
+      </div>
+      <!-- 左：资源 -->
+      <div class="cc-section cc-section-resource">
+        <div class="cc-section-title">资源</div>
+        <div class="cc-stat-item"><span class="cc-stat-label">接入大模型能力</span><span class="cc-stat-value">16</span></div>
+        <div class="cc-stat-item"><span class="cc-stat-label">Token资源</span><span class="cc-stat-value cc-stat-token">101,802,703</span></div>
+      </div>
+      <!-- 中左：生产物 -->
+      <div class="cc-section cc-section-product">
+        <div class="cc-section-title">生产物</div>
+        <div class="cc-stat-item"><span class="cc-stat-label">建筑物产物</span><span class="cc-stat-value">1</span></div>
+        <div class="cc-stat-sub-list">
+          <div class="cc-stat-sub-item"><span class="cc-stat-sub-label cc-stat-product">自制网站</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="coord-cursor"></div>
+<div id="hover-tooltip" style="display:none"></div>
+
+<script src="three.min.js"></script>
+<script src="OrbitControls.js"></script>
+<script src="GLTFLoader.js"></script>
+
+<script>
+// =============================================
+// STARCRAFT II - 3D TERRAN BASE SCENE
+// =============================================
+
+const TILE = 2;
+const BASE_X = -2.7;
+const BASE_Y = 6.9;
+const MINERAL_CX = -10;
+const MINERAL_CY = 10;
+const SCV_COUNT = 3;
+
+// Scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x3D1C0A);
+scene.fog = new THREE.FogExp2(0x3D1C0A, 0.015);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 200);
+camera.position.set(18, 22, 24);
+camera.lookAt(BASE_X, 0, BASE_Y);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(BASE_X, 0, BASE_Y);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI / 2.2;
+controls.minDistance = 8;
+controls.maxDistance = 60;
+controls.update();
+
+// =============================================
+// LIGHTING
+// =============================================
+const ambientLight = new THREE.AmbientLight(0x553322, 0.7);
+scene.add(ambientLight);
+
+const mainLight = new THREE.DirectionalLight(0xFFAA66, 1.5);
+mainLight.position.set(15, 25, 10);
+mainLight.castShadow = true;
+mainLight.shadow.mapSize.width = 2048;
+mainLight.shadow.mapSize.height = 2048;
+mainLight.shadow.camera.left = -30;
+mainLight.shadow.camera.right = 30;
+mainLight.shadow.camera.top = 30;
+mainLight.shadow.camera.bottom = -30;
+mainLight.shadow.camera.near = 1;
+mainLight.shadow.camera.far = 80;
+mainLight.shadow.bias = -0.002;
+scene.add(mainLight);
+
+const fillLight = new THREE.DirectionalLight(0x884422, 0.2);
+fillLight.position.set(-10, 10, -8);
+scene.add(fillLight);
+
+const mineralLight = new THREE.PointLight(0x3366ff, 0.8, 30);
+mineralLight.position.set(-10, 4, 10);
+scene.add(mineralLight);
+
+const dockLight = new THREE.PointLight(0xffaa44, 0.5, 15);
+dockLight.position.set(BASE_X, 3, BASE_Y + 5);
+scene.add(dockLight);
+
+// =============================================
+// GROUND / TERRAIN
+// =============================================
+function createGround() {
+  const size = 100;
+  const geo = new THREE.PlaneGeometry(size, size, 120, 120);
+  const verts = geo.attributes.position.array;
+  for (let i = 0; i < verts.length; i += 3) {
+    verts[i + 2] += (Math.random() - 0.5) * 0.12;
+  }
+  geo.computeVertexNormals();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+  // Mars base color - rusty red-orange
+  ctx.fillStyle = '#9B6040';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  // Dusty surface noise
+  for (let i = 0; i < 20000; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 1024;
+    const r = Math.random() > 0.7 ? 180 + Math.random()*40|0 : 120 + Math.random()*40|0;
+    const g = 60 + Math.random()*40|0;
+    const b = 20 + Math.random()*30|0;
+    ctx.fillStyle = `rgba(${r},${g},${b},${Math.random()*0.15})`;
+    const s = 1 + Math.random() * 4;
+    ctx.fillRect(x, y, s, s);
+  }
+
+  // Craters (meteorite impact)
+  for (let i = 0; i < 25; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 1024;
+    const r = 15 + Math.random() * 50;
+    // Dark rim
+    const grd = ctx.createRadialGradient(x,y,r*0.3,x,y,r);
+    grd.addColorStop(0,'rgba(60,30,10,0.3)');
+    grd.addColorStop(0.6,'rgba(80,40,15,0.2)');
+    grd.addColorStop(1,'rgba(100,50,20,0)');
+    ctx.fillStyle = grd; ctx.fillRect(x-r,y-r,r*2,r*2);
+    // Bright rim highlight
+    ctx.strokeStyle = `rgba(200,120,60,${0.1+Math.random()*0.15})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x,y,r*0.7,0,Math.PI*2); ctx.stroke();
+  }
+
+  // Dark rock patches
+  for (let i = 0; i < 20; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 1024;
+    const r = 20 + Math.random() * 80;
+    const grd = ctx.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0,'rgba(50,25,10,0.25)'); grd.addColorStop(1,'rgba(50,25,10,0)');
+    ctx.fillStyle = grd; ctx.fillRect(x-r,y-r,r*2,r*2);
+  }
+
+  // Fine crack lines
+  ctx.strokeStyle = 'rgba(40,20,5,0.2)'; ctx.lineWidth = 1;
+  for (let i = 0; i < 50; i++) {
+    ctx.beginPath();
+    let cx = Math.random()*1024, cy = Math.random()*1024;
+    ctx.moveTo(cx,cy);
+    for (let s = 0; s < 6; s++) { cx += (Math.random()-0.5)*60; cy += (Math.random()-0.5)*60; ctx.lineTo(cx,cy); }
+    ctx.stroke();
+  }
+
+  // Small rocks/pebbles
+  for (let i = 0; i < 400; i++) {
+    const x = Math.random()*1024, y = Math.random()*1024;
+    const s = 1 + Math.random()*3;
+    const shade = Math.random() > 0.5;
+    ctx.fillStyle = shade
+      ? `rgba(${160+Math.random()*50|0},${80+Math.random()*30|0},${30+Math.random()*20|0},0.7)`
+      : `rgba(${90+Math.random()*30|0},${45+Math.random()*20|0},${20+Math.random()*10|0},0.6)`;
+    ctx.beginPath(); ctx.ellipse(x,y,s,s*0.6,Math.random()*Math.PI,0,Math.PI*2); ctx.fill();
+  }
+
+  // Dried river/channel痕迹
+  ctx.strokeStyle = 'rgba(70,35,15,0.2)'; ctx.lineWidth = 25; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(1024*0.2,1024*0.3); ctx.quadraticCurveTo(1024*0.4,1024*0.45,1024*0.6,1024*0.4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(1024*0.7,1024*0.6); ctx.quadraticCurveTo(1024*0.5,1024*0.7,1024*0.3,1024*0.65); ctx.stroke();
+
+  // Light dust drifts (bright areas)
+  for (let i = 0; i < 15; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 1024;
+    const r = 30 + Math.random() * 60;
+    const grd = ctx.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0,'rgba(220,160,100,0.08)'); grd.addColorStop(1,'rgba(220,160,100,0)');
+    ctx.fillStyle = grd; ctx.fillRect(x-r,y-r,r*2,r*2);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.95, metalness: 0.05, color: 0x9B6040 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  // (CC pad removed)
+
+  // (mineral dirt removed)
+}
+
+// =============================================
+// COMMAND CENTER
+// =============================================
+function createCommandCenter(ccModel) {
+  const cc = new THREE.Group();
+
+  if (ccModel) {
+    // Use real GLTF model
+    const model = ccModel.clone();
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    // Target: 5 tiles wide, keep proportions
+    const targetW = TILE * 3.2; // 4 * 0.8 = 20% smaller
+    const scale = targetW / size.x;
+    model.scale.setScalar(scale);
+    // Re-compute after scale, ground it
+    const box2 = new THREE.Box3().setFromObject(model);
+    model.position.y = -box2.min.y;
+    // Center on XZ
+    const box3 = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    box3.getCenter(center);
+    model.position.x = -center.x;
+    model.position.z = -center.z;
+    // Enable shadows
+    model.traverse(child => {
+      if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+    });
+    cc.add(model);
+  } else {
+    // Fallback: procedural geometry
+  const W = TILE*5, H = TILE*4, mainH = TILE*2.2, superH = TILE*1.2;
+
+  const hull = new THREE.Mesh(
+    new THREE.BoxGeometry(W, mainH, H),
+    new THREE.MeshStandardMaterial({ color: 0x686460, roughness: 0.55, metalness: 0.6 })
+  );
+  hull.position.y = mainH/2; hull.castShadow = true; hull.receiveShadow = true; cc.add(hull);
+
+  // Panel lines
+  for (let i = 0; i < 4; i++) {
+    const line = new THREE.Mesh(
+      new THREE.BoxGeometry(W+0.02, 0.04, H+0.02),
+      new THREE.MeshStandardMaterial({ color: 0x504c48, roughness: 0.5, metalness: 0.7 })
+    );
+    line.position.y = mainH*(i+1)/5; cc.add(line);
+  }
+  for (let i = 0; i < 5; i++) {
+    [-1,1].forEach(side => {
+      const line = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, mainH, 0.04),
+        new THREE.MeshStandardMaterial({ color: 0x504c48, roughness: 0.5, metalness: 0.7 })
+      );
+      line.position.set(side*W/2, mainH/2, -H/2+H*(i+0.5)/5); cc.add(line);
+    });
+  }
+
+  // Rivets
+  const rivetGeo = new THREE.SphereGeometry(0.06, 6, 6);
+  const rivetMat = new THREE.MeshStandardMaterial({ color: 0x8a8478, metalness: 0.8, roughness: 0.3 });
+  for (let row = 0; row < 5; row++) for (let col = 0; col < 6; col++) {
+    [-1,1].forEach(side => {
+      const rv = new THREE.Mesh(rivetGeo, rivetMat);
+      rv.position.set(side*(W/2+0.05), mainH*(row+0.5)/5, -H/2+H*(col+0.5)/6); cc.add(rv);
+    });
+  }
+
+  // Superstructure
+  const sup = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE*3, superH, TILE*1.8),
+    new THREE.MeshStandardMaterial({ color: 0x757068, roughness: 0.5, metalness: 0.65 })
+  );
+  sup.position.y = mainH+superH/2; sup.castShadow = true; cc.add(sup);
+  const supBorder = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE*3+0.1, 0.08, TILE*1.8+0.1),
+    new THREE.MeshStandardMaterial({ color: 0x585450, metalness: 0.7, roughness: 0.4 })
+  );
+  supBorder.position.y = mainH+0.04; cc.add(supBorder);
+
+  // Radar dome
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(TILE*0.6, 16, 12, 0, Math.PI*2, 0, Math.PI/2),
+    new THREE.MeshStandardMaterial({ color: 0x807c72, roughness: 0.4, metalness: 0.6 })
+  );
+  dome.position.set(0, mainH+superH, 0); dome.castShadow = true; cc.add(dome);
+
+  const dish = new THREE.Mesh(
+    new THREE.CylinderGeometry(TILE*0.5, TILE*0.55, 0.08, 16),
+    new THREE.MeshStandardMaterial({ color: 0x9a9688, metalness: 0.7, roughness: 0.3 })
+  );
+  dish.position.set(0, mainH+superH+0.05, 0); cc.add(dish); cc.userData.dish = dish;
+
+  const cross = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE*1.1, 0.06, 0.06),
+    new THREE.MeshStandardMaterial({ color: 0x9a9688, metalness: 0.7, roughness: 0.3 })
+  );
+  cross.position.set(0, mainH+superH+0.1, 0); cc.add(cross); cc.userData.dishCross = cross;
+
+  // Antenna
+  const antMat = new THREE.MeshStandardMaterial({ color: 0x8a8890, metalness: 0.8, roughness: 0.3 });
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,TILE*1.5,8), antMat);
+  ant.position.set(-TILE*3/2+TILE*0.5, mainH+superH+TILE*0.75, 0); cc.add(ant);
+  const antCross = new THREE.Mesh(new THREE.BoxGeometry(TILE*0.5,0.04,0.04), antMat);
+  antCross.position.set(-TILE*3/2+TILE*0.5, mainH+superH+TILE*1.3, 0); cc.add(antCross);
+
+  const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff2020 });
+  const redLight = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), redLightMat);
+  redLight.position.set(-TILE*3/2+TILE*0.5, mainH+superH+TILE*1.5+0.1, 0);
+  cc.add(redLight); cc.userData.redLight = redLight; cc.userData.redLightMat = redLightMat;
+
+  // Windows
+  const winGeo = new THREE.PlaneGeometry(TILE*0.5, TILE*0.3);
+  const winMat = new THREE.MeshBasicMaterial({ color: 0x3399ff, transparent: true, opacity: 0.85 });
+  for (let i = -1; i <= 1; i++) {
+    const win = new THREE.Mesh(winGeo, winMat.clone());
+    win.position.set(i*TILE*0.9, mainH+superH*0.55, TILE*1.8/2+0.05);
+    cc.add(win); cc.userData['win'+(i+1)] = win;
+  }
+  const sideWinGeo = new THREE.PlaneGeometry(TILE*0.4, TILE*0.25);
+  const sideWinMat = new THREE.MeshBasicMaterial({ color: 0x2288dd, transparent: true, opacity: 0.6 });
+  [-1,1].forEach(side => {
+    [-.2,.2].forEach(off => {
+      const win = new THREE.Mesh(sideWinGeo, sideWinMat.clone());
+      win.position.set(side*(W/2+0.05), mainH*0.5, H*off);
+      win.rotation.y = side*Math.PI/2; cc.add(win);
+    });
+  });
+
+  const winLight = new THREE.PointLight(0x3399ff, 0.4, 8);
+  winLight.position.set(0, mainH+superH*0.55, TILE*1.8/2+1);
+  cc.add(winLight); cc.userData.winLight = winLight;
+
+  // Dock
+  const dock = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE*2, TILE*0.4, TILE*0.8),
+    new THREE.MeshStandardMaterial({ color: 0x504c44, roughness: 0.6, metalness: 0.5 })
+  );
+  dock.position.set(0, TILE*0.2, H/2+TILE*0.4); dock.castShadow = true; cc.add(dock);
+  const indGeo = new THREE.SphereGeometry(0.12,8,8);
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xffcc33 });
+  [-0.7,0.7].forEach(x => {
+    const ind = new THREE.Mesh(indGeo, indMat);
+    ind.position.set(TILE*x, TILE*0.42, H/2+TILE*0.8); cc.add(ind);
+  });
+  const stripe = new THREE.Mesh(
+    new THREE.PlaneGeometry(TILE*0.3, TILE*0.8),
+    new THREE.MeshBasicMaterial({ color: 0xffaa22, transparent: true, opacity: 0.3 })
+  );
+  stripe.rotation.x = -Math.PI/2; stripe.position.set(0, TILE*0.41, H/2+TILE*0.4); cc.add(stripe);
+
+  // Vents
+  const ventMat = new THREE.MeshStandardMaterial({ color: 0x383430, roughness: 0.7, metalness: 0.5 });
+  [-1,1].forEach(side => {
+    for (let i = 0; i < 3; i++) {
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(TILE*0.4,TILE*0.15,TILE*0.06), ventMat);
+      vent.position.set(side*(W/2-TILE*0.8), mainH*(i+1)/4, H/2+0.03); cc.add(vent);
+    }
+  });
+  } // end fallback
+
+  cc.position.set(BASE_X, 0, BASE_Y);
+  cc.userData.isCommandCenter = true;
+  cc.userData.displayName = '火星基地';
+  scene.add(cc);
+  return cc;
+}
+
+// =============================================
+// MINERALS
+// =============================================
+function createMinerals(mineralModel) {
+  const groups = [];
+  // 8个矿堆固定坐标（用户手动选取）
+  const positions = [
+    [-17.6,  5.7],
+    [-17.7,  8.3],
+    [-17.4, 10.2],
+    [-17.2, 11.7],
+    [-15.2, 13.7],
+    [-14.3, 14.9],
+    [-13.1, 15.5],
+    [-12.0, 15.6],
+  ];
+  for (let i = 0; i < positions.length; i++) {
+    const mx = positions[i][0];
+    const mz = positions[i][1];
+    const isLarge = i < 4;
+    const group = new THREE.Group();
+    group.position.set(mx, 0, mz);
+
+    if (mineralModel) {
+      // Use real GLTF crystal model - 2 per cluster at different angles
+      const baseRot = Math.random() * Math.PI * 2;
+      for (let c = 0; c < 2; c++) {
+        const m = mineralModel.clone(true);
+        m.rotation.y = baseRot + c * Math.PI * 0.6 + Math.random() * 0.4;
+        const box = new THREE.Box3().setFromObject(m);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const targetSize = TILE * 0.8;
+        const scale = targetSize / maxDim;
+        m.scale.setScalar(scale);
+        const box2 = new THREE.Box3().setFromObject(m);
+        m.position.y = -box2.min.y;
+        // Offset each crystal so they form a pair
+        const offset = 0.6;
+        const angle = baseRot + c * Math.PI;
+        m.position.x = Math.cos(angle) * offset * 0.5;
+        m.position.z = Math.sin(angle) * offset * 0.5;
+        m.rotation.x = (Math.random() - 0.5) * 0.2;
+        m.rotation.z = (Math.random() - 0.5) * 0.2;
+        m.traverse(child => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            // Make crystal emissive / glow
+            if (child.material) {
+              child.material = child.material.clone();
+              child.material.emissive = new THREE.Color(0x4488ff);
+              child.material.emissiveIntensity = 0.8;
+            }
+          }
+        });
+        group.add(m);
+      }
+    }
+
+    // Blue glow circle on ground
+    const glow = new THREE.Mesh(
+      new THREE.CircleGeometry(isLarge?2.5:1.5, 24),
+      new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.25 })
+    );
+    glow.rotation.x = -Math.PI/2; glow.position.y = 0.02; group.add(glow);
+
+    for (let d = 0; d < 5+(Math.random()*5|0); d++) {
+      const deb = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1+Math.random()*0.15, 0.05, 0.1+Math.random()*0.12),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(0.6,0.5,0.35), roughness: 0.7, metalness: 0.2 })
+      );
+      deb.position.set((Math.random()-0.5)*3, 0.025, (Math.random()-0.5)*3);
+      deb.rotation.y = Math.random()*Math.PI; group.add(deb);
+    }
+
+    scene.add(group);
+    group.userData.isMineralCluster = true;
+    group.userData.displayName = 'AI大模型';
+    groups.push({ group, x: mx, z: mz, large: isLarge, resource: isLarge?1800:900, pulseOff: Math.random()*Math.PI*2 });
+  }
+  return groups;
+}
+
+// =============================================
+// BUILDING 2
+// =============================================
+function createBuilding2(building2Model) {
+  if (!building2Model) return;
+  const model = building2Model.clone(true);
+  // Scale to ~3 tiles wide (slightly smaller than CC)
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = TILE * 3;
+  const scale = targetSize / maxDim;
+  model.scale.setScalar(scale);
+  // Ground it
+  const box2 = new THREE.Box3().setFromObject(model);
+  model.position.y = -box2.min.y;
+  // Enable shadows
+  model.traverse(child => {
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+  });
+  // Place building at specified location
+  model.position.x = 5.7;
+  model.position.z = -4.5;
+  model.userData.isBuilding2 = true;
+  model.userData.displayName = '世界资源学习库';
+  scene.add(model);
+}
+
+function createHouse(houseModel) {
+  if (!houseModel) return;
+  const model = houseModel.clone(true);
+  // Scale to ~2.5 tiles wide
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = TILE * 2.5;
+  const scale = targetSize / maxDim;
+  model.scale.setScalar(scale);
+  // Ground it
+  const box2 = new THREE.Box3().setFromObject(model);
+  model.position.y = -box2.min.y;
+  // Enable shadows
+  model.traverse(child => {
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+  });
+  // Place at specified location
+  model.position.x = -6.7;
+  model.position.z = -10.4;
+  model.userData.isBuilding3 = true;
+  model.userData.displayName = '自研产物1';
+  scene.add(model);
+
+  // Repair SCV - orbits building, stops to repair at intervals
+  if (scvTemplate) {
+    const repairSCV = cloneSCV();
+    const bldX = model.position.x, bldZ = model.position.z;
+    const orbitR = 3.2;
+    // 4 repair waypoints around the building
+    const waypoints = [
+      { x: bldX,         z: bldZ + orbitR },
+      { x: bldX + orbitR, z: bldZ },
+      { x: bldX,         z: bldZ - orbitR },
+      { x: bldX - orbitR, z: bldZ },
+    ];
+    repairSCV.position.set(waypoints[0].x, 0, waypoints[0].z);
+    repairSCV.userData.isSCV = true;
+    repairSCV.userData.displayName = '小龙虾';
+    scene.add(repairSCV);
+    scene.userData.repairSCV = repairSCV;
+    scene.userData.repairState = {
+      waypoints,
+      targetIdx: 1,
+      phase: 'move',
+      timer: 0,
+      moveSpeed: 0.0006 + Math.random() * 0.0002,
+      repairDuration: 2500 + Math.random() * 2000,
+    };
+  }
+}
+
+// =============================================
+// AIRCRAFT (Flying vehicle)
+// =============================================
+function createAircraft(aircraftModel) {
+  if (!aircraftModel) return;
+  const model = aircraftModel.clone(true);
+  // Scale to ~2.5 tiles
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = TILE * 2.5;
+  const scale = targetSize / maxDim;
+  model.scale.setScalar(scale);
+  // Place on ground, face CC
+  model.position.set(12.2, 0, 18.1);
+  model.rotation.y = Math.atan2(BASE_X - 12.2, BASE_Y - 18.1);
+  // Ground it
+  const box2 = new THREE.Box3().setFromObject(model);
+  model.position.y = -box2.min.y;
+  // Enable shadows
+  model.traverse(child => {
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+  });
+  model.userData.isAircraft = true;
+  model.userData.baseY = model.position.y;
+  scene.add(model);
+  scene.userData.aircraft = model;
+}
+
+// =============================================
+// SMALL MINERAL PATCH (near Building 3)
+// =============================================
+function createSmallMinerals(mineralModel) {
+  const cx = 2, cz = 16;
+  const groups = [];
+  const count = 1;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+    const radius = 2 + Math.random() * 1.5;
+    const mx = cx + Math.cos(angle) * radius;
+    const mz = cz + Math.sin(angle) * radius;
+    const group = new THREE.Group();
+    group.position.set(mx, 0, mz);
+
+    if (mineralModel) {
+      const baseRot = Math.random() * Math.PI * 2;
+      for (let c = 0; c < 2; c++) {
+        const m = mineralModel.clone(true);
+        m.rotation.y = baseRot + c * Math.PI * 0.6 + Math.random() * 0.4;
+        const box = new THREE.Box3().setFromObject(m);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const targetSize = TILE * 0.8;
+        const scale = targetSize / maxDim;
+        m.scale.setScalar(scale);
+        const box2 = new THREE.Box3().setFromObject(m);
+        m.position.y = -box2.min.y;
+        const offset = 0.4;
+        const angle = baseRot + c * Math.PI;
+        m.position.x = Math.cos(angle) * offset * 0.5;
+        m.position.z = Math.sin(angle) * offset * 0.5;
+        m.rotation.x = (Math.random() - 0.5) * 0.2;
+        m.rotation.z = (Math.random() - 0.5) * 0.2;
+        m.traverse(child => {
+          if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+        });
+        group.add(m);
+      }
+    }
+
+    const glow = new THREE.Mesh(
+      new THREE.CircleGeometry(1.2, 24),
+      new THREE.MeshBasicMaterial({ color: 0x3366ff, transparent: true, opacity: 0.1 })
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.02;
+    group.add(glow);
+
+    scene.add(group);
+    groups.push({ group, x: mx, z: mz, large: false, resource: 600, pulseOff: Math.random() * Math.PI * 2 });
+  }
+  return groups;
+}
+
+// =============================================
+// ASTRONAUT
+// =============================================
+function createAstronaut(astronautModel) {
+  if (!astronautModel) return;
+  const model = astronautModel.clone(true);
+  // Scale to fit scene (~2 tiles tall like SCV)
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = TILE * 0.9;
+  const scale = targetSize / maxDim;
+  model.scale.setScalar(scale);
+  // Ground it
+  const box2 = new THREE.Box3().setFromObject(model);
+  model.position.y = -box2.min.y;
+  // Enable shadows
+  model.traverse(child => {
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+  });
+  // Place to the upper-right of CC: BASE is at (4, -4), so right+up = (+x, +z)
+  model.position.x = BASE_X + 10;
+  model.position.z = BASE_Y + 12;
+  // Hover in the air
+  model.position.y += TILE * 3;
+  // Face toward CC
+  const toCCX = BASE_X - (BASE_X + 10);
+  const toCCZ = BASE_Y - (BASE_Y + 12);
+  model.rotation.y = Math.atan2(toCCX, toCCZ);
+  model.userData.isHovering = true;
+  model.userData.baseY = model.position.y;
+  model.userData.isAstronaut = true;
+  model.userData.displayName = '我';
+  scene.add(model);
+}
+
+// =============================================
+// SCV — GLTF model based
+// =============================================
+let scvTemplate = null; // stores loaded GLTF scene
+
+function cloneSCV() {
+  if (!scvTemplate) return null;
+  const wrapper = new THREE.Group();
+
+  // Deep clone the model
+  const model = scvTemplate.clone(true);
+
+  // Auto-scale: measure bounding box and fit to ~1 TILE
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const targetSize = TILE * 0.9;
+  const scale = targetSize / maxDim;
+  model.scale.setScalar(scale);
+
+  // Re-compute bounding box after scale to set Y so model sits on ground
+  const box2 = new THREE.Box3().setFromObject(model);
+  model.position.y = -box2.min.y;
+
+  // Enable shadows on all meshes
+  model.traverse(child => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  wrapper.add(model);
+
+  // Attach a carry light (blue sphere indicating minerals carried)
+  const carryLight = new THREE.PointLight(0x4488ff, 0, 2);
+  carryLight.position.set(0, TILE*0.5, -TILE*0.3);
+  wrapper.add(carryLight);
+  wrapper.userData.carryLight = carryLight;
+
+  // Fake carry visual — small glowing sphere
+  const carryMat = new THREE.MeshBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0 });
+  const carry = new THREE.Mesh(new THREE.SphereGeometry(TILE*0.1, 8, 8), carryMat);
+  carry.position.set(0, TILE*0.55, -TILE*0.35);
+  wrapper.add(carry);
+  wrapper.userData.carryMat = carryMat;
+
+  // Engine exhaust
+  const exhaustMat = new THREE.MeshBasicMaterial({ color: 0xff6622, transparent: true, opacity: 0 });
+  const exhaust = new THREE.Mesh(new THREE.ConeGeometry(TILE*0.08, TILE*0.15, 6), exhaustMat);
+  exhaust.rotation.x = Math.PI/2;
+  exhaust.position.set(0, TILE*0.25, -TILE*0.5);
+  wrapper.add(exhaust);
+  wrapper.userData.exhaustMat = exhaustMat;
+
+  return wrapper;
+}
+
+// =============================================
+// SCV STATE MACHINE
+// =============================================
+const SCVS = { TO_MIN: 0, MINING: 1, TO_BASE: 2, UNLOAD: 3 };
+const SCV_DUR = { [SCVS.MINING]: 3200, [SCVS.UNLOAD]: 1800 };
+
+function createSCVs(mineralGroups) {
+  const scvList = [];
+  const largeMinerals = mineralGroups.filter(g => g.large);
+  // Multiple dock points along CC edges (TILE*5 wide, TILE*4 deep, centered at BASE)
+  const dockPoints = [
+    new THREE.Vector3(BASE_X, 0, BASE_Y + TILE*2.3),   // front center
+    new THREE.Vector3(BASE_X + TILE*2, 0, BASE_Y + TILE*2),  // front right
+    new THREE.Vector3(BASE_X - TILE*2, 0, BASE_Y + TILE*2),  // front left
+    new THREE.Vector3(BASE_X + TILE*2.8, 0, BASE_Y),    // right side
+    new THREE.Vector3(BASE_X - TILE*2.8, 0, BASE_Y),    // left side
+  ];
+
+  for (let i = 0; i < SCV_COUNT; i++) {
+    const mesh = cloneSCV();
+    const target = largeMinerals[i % largeMinerals.length];
+    const dockPos = dockPoints[i % dockPoints.length];
+    mesh.position.set(dockPos.x, 0, dockPos.z);
+    mesh.userData.isSCV = true;
+    mesh.userData.displayName = '小龙虾';
+    scene.add(mesh);
+
+    scvList.push({
+      mesh,
+      state: SCVS.TO_MIN,
+      target: new THREE.Vector3(target.x, 0, target.z),
+      startPos: new THREE.Vector3(dockPos.x, 0, dockPos.z),
+      endPos: new THREE.Vector3(target.x, 0, target.z),
+      progress: (i / SCV_COUNT),
+      speed: 0.0004 + Math.random()*0.0002,
+      timer: (i / SCV_COUNT) * 7000,
+      id: i,
+      angle: 0,
+      carrying: false,
+      dockPos: dockPos.clone(),
+      controlPoint: new THREE.Vector3(
+        (dockPos.x + target.x)/2 + (Math.random()-0.5)*6,
+        0,
+        (dockPos.z + target.z)/2 + (Math.random()-0.5)*6
+      ),
+    });
+  }
+  return scvList;
+}
+
+function updateSCV(scv, dt) {
+  scv.timer += dt;
+  const dockPos = scv.dockPos;
+
+  switch (scv.state) {
+    case SCVS.TO_MIN:
+      scv.progress += scv.speed * dt;
+      if (scv.progress >= 1) {
+        scv.mesh.position.set(scv.target.x, 0, scv.target.z);
+        scv.state = SCVS.MINING; scv.timer = 0;
+      } else {
+        const t = scv.progress, mt = 1-t;
+        scv.mesh.position.x = mt*mt*scv.startPos.x + 2*mt*t*scv.controlPoint.x + t*t*scv.target.x;
+        scv.mesh.position.z = mt*mt*scv.startPos.z + 2*mt*t*scv.controlPoint.z + t*t*scv.target.z;
+        const dx = scv.target.x - scv.mesh.position.x, dz = scv.target.z - scv.mesh.position.z;
+        if (Math.abs(dx)>0.01||Math.abs(dz)>0.01) scv.angle = Math.atan2(dx,dz);
+      }
+      break;
+    case SCVS.MINING:
+      if (scv.timer >= SCV_DUR[SCVS.MINING]) {
+        scv.state = SCVS.TO_BASE; scv.timer = 0; scv.carrying = true;
+        scv.startPos.copy(scv.mesh.position); scv.endPos.copy(dockPos); scv.progress = 0;
+        scv.controlPoint.set(
+          (scv.startPos.x+scv.endPos.x)/2+(Math.random()-0.5)*6, 0,
+          (scv.startPos.z+scv.endPos.z)/2+(Math.random()-0.5)*6
+        );
+      }
+      break;
+    case SCVS.TO_BASE:
+      scv.progress += scv.speed * dt;
+      if (scv.progress >= 1) {
+        scv.mesh.position.copy(dockPos); scv.state = SCVS.UNLOAD; scv.timer = 0;
+      } else {
+        const t = scv.progress, mt = 1-t;
+        scv.mesh.position.x = mt*mt*scv.startPos.x + 2*mt*t*scv.controlPoint.x + t*t*scv.endPos.x;
+        scv.mesh.position.z = mt*mt*scv.startPos.z + 2*mt*t*scv.controlPoint.z + t*t*scv.endPos.z;
+        const dx = scv.endPos.x - scv.mesh.position.x, dz = scv.endPos.z - scv.mesh.position.z;
+        if (Math.abs(dx)>0.01||Math.abs(dz)>0.01) scv.angle = Math.atan2(dx,dz);
+      }
+      break;
+    case SCVS.UNLOAD:
+      if (scv.timer >= SCV_DUR[SCVS.UNLOAD]) {
+        scv.carrying = false; scv.state = SCVS.TO_MIN; scv.timer = 0;
+        scv.startPos.copy(scv.mesh.position);
+        // Pick a random mineral cluster (from all, not just large)
+        const allMinerals = mineralGroups;
+        const rndMineral = allMinerals[Math.floor(Math.random() * allMinerals.length)];
+        scv.target.set(rndMineral.x+(Math.random()-0.5)*2, 0, rndMineral.z+(Math.random()-0.5)*2);
+        scv.endPos.copy(scv.target); scv.progress = 0;
+        scv.controlPoint.set(
+          (scv.startPos.x+scv.endPos.x)/2+(Math.random()-0.5)*6, 0,
+          (scv.startPos.z+scv.endPos.z)/2+(Math.random()-0.5)*6
+        );
+      }
+      break;
+  }
+
+  scv.mesh.rotation.y = scv.angle;
+
+  // Carry glow
+  if (scv.mesh.userData.carryMat) {
+    const target = scv.carrying ? 0.8 : 0;
+    scv.mesh.userData.carryMat.opacity += (target - scv.mesh.userData.carryMat.opacity) * 0.05;
+    scv.mesh.userData.carryLight.intensity += ((scv.carrying?0.4:0) - scv.mesh.userData.carryLight.intensity) * 0.05;
+  }
+
+  // Exhaust
+  if (scv.mesh.userData.exhaustMat) {
+    const moving = scv.state===SCVS.TO_MIN||scv.state===SCVS.TO_BASE;
+    const tEx = moving ? 0.4+Math.sin(Date.now()*0.015+scv.id*2)*0.25 : 0;
+    scv.mesh.userData.exhaustMat.opacity += (tEx - scv.mesh.userData.exhaustMat.opacity) * 0.1;
+  }
+}
+
+// =============================================
+// MINING PARTICLES
+// =============================================
+const particlePool = [];
+const PARTICLE_COUNT = 80;
+
+function initParticles() {
+  const geo = new THREE.BufferGeometry();
+  const positions = new Float32Array(PARTICLE_COUNT*3);
+  const colors = new Float32Array(PARTICLE_COUNT*3);
+  const sizes = new Float32Array(PARTICLE_COUNT);
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particlePool.push({ active:false, life:0, maxLife:1, x:0,y:0,z:0, vx:0,vy:0,vz:0, r:0,g:0,b:0 });
+    sizes[i] = 0;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes,1));
+  const mat = new THREE.PointsMaterial({
+    size:0.15, vertexColors:true, transparent:true, opacity:0.8,
+    blending:THREE.AdditiveBlending, depthWrite:false, sizeAttenuation:true
+  });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+  return points;
+}
+
+function spawnParticle(x,y,z,vx,vy,vz,life,color) {
+  for (let i=0; i<particlePool.length; i++) {
+    if (!particlePool[i].active) {
+      const p=particlePool[i]; p.active=true; p.life=life; p.maxLife=life;
+      p.x=x; p.y=y; p.z=z; p.vx=vx; p.vy=vy; p.vz=vz;
+      p.r=color[0]; p.g=color[1]; p.b=color[2]; return;
+    }
+  }
+}
+
+function updateParticles(dt) {
+  const positions = particleSystem.geometry.attributes.position.array;
+  const colors = particleSystem.geometry.attributes.color.array;
+  const sizes = particleSystem.geometry.attributes.size.array;
+  for (let i=0; i<PARTICLE_COUNT; i++) {
+    const p=particlePool[i];
+    if (!p.active) { sizes[i]=0; continue; }
+    p.life -= dt/1000;
+    if (p.life<=0) { p.active=false; sizes[i]=0; continue; }
+    p.x+=p.vx*dt*0.003; p.y+=p.vy*dt*0.003; p.z+=p.vz*dt*0.003;
+    p.vy -= 0.002*dt;
+    const alpha=p.life/p.maxLife;
+    positions[i*3]=p.x; positions[i*3+1]=p.y; positions[i*3+2]=p.z;
+    colors[i*3]=p.r*alpha; colors[i*3+1]=p.g*alpha; colors[i*3+2]=p.b*alpha;
+    sizes[i]=0.12*alpha;
+  }
+  particleSystem.geometry.attributes.position.needsUpdate=true;
+  particleSystem.geometry.attributes.color.needsUpdate=true;
+  particleSystem.geometry.attributes.size.needsUpdate=true;
+}
+
+// =============================================
+// DUST
+// =============================================
+function createDust() {
+  const count=150, geo=new THREE.BufferGeometry();
+  const positions=new Float32Array(count*3);
+  for (let i=0; i<count; i++) {
+    positions[i*3]=(Math.random()-0.5)*50;
+    positions[i*3+1]=Math.random()*8;
+    positions[i*3+2]=(Math.random()-0.5)*50;
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const mat=new THREE.PointsMaterial({ color:0x998866,size:0.06,transparent:true,opacity:0.25,depthWrite:false,sizeAttenuation:true });
+  const dust=new THREE.Points(geo,mat); scene.add(dust);
+  return { mesh:dust, positions, count };
+}
+
+// =============================================
+// ANIMATION LOOP
+// =============================================
+let lastTime=0, scvs=[], particleSystem, dust, commandCenter, mineralGroups;
+const mineralCountEl=document.getElementById('mineral-count');
+let tokenValue = 100000000; // 1亿基础值
+let tokenTimer = 0;
+
+function animate(time) {
+  requestAnimationFrame(animate);
+  const dt=Math.min(time-lastTime,50); lastTime=time;
+  controls.update();
+
+  // CC animations
+  if (commandCenter) {
+    if (commandCenter.userData.dish) commandCenter.userData.dish.rotation.y=time*0.0008;
+    if (commandCenter.userData.dishCross) commandCenter.userData.dishCross.rotation.y=time*0.0008;
+    if (commandCenter.userData.redLightMat) {
+      commandCenter.userData.redLightMat.color.setHex(Math.sin(time*0.004)>0.2?0xff2020:0x330808);
+    }
+    const wp=0.7+Math.sin(time*0.002)*0.2;
+    for (let i=1;i<=3;i++) {
+      const win=commandCenter.userData['win'+i];
+      if (win&&win.material) win.material.opacity=wp;
+    }
+    if (commandCenter.userData.winLight) commandCenter.userData.winLight.intensity=0.3+Math.sin(time*0.002)*0.15;
+  }
+
+  // Token counter - fluctuate around 1亿 ± 1千万
+  tokenTimer += dt;
+  if (tokenTimer > 2000 + Math.random() * 3000) {
+    tokenTimer = 0;
+    tokenValue += (Math.random() - 0.48) * 2000000; // 略微倾向增长
+    tokenValue = Math.max(90000000, Math.min(110000000, tokenValue)); // 9千万~1.1亿
+  }
+  mineralCountEl.textContent = Math.floor(tokenValue).toLocaleString();
+
+  scvs.forEach(scv=>{
+    updateSCV(scv,dt);
+    if (scv.state===SCVS.MINING&&Math.random()>0.5) {
+      spawnParticle(
+        scv.mesh.position.x+(Math.random()-0.5)*1, 0.5+Math.random()*0.5,
+        scv.mesh.position.z+(Math.random()-0.5)*1,
+        (Math.random()-0.5)*0.1, 0.05+Math.random()*0.1, (Math.random()-0.5)*0.1,
+        0.3+Math.random()*0.4, Math.random()>0.5?[0.35,0.55,1]:[0.63,0.78,1]
+      );
+    }
+    if (scv.state===SCVS.UNLOAD&&Math.random()>0.6) {
+      spawnParticle(
+        scv.mesh.position.x+(Math.random()-0.5)*1.5, 1+Math.random(),
+        scv.mesh.position.z+(Math.random()-0.5)*1.5,
+        (Math.random()-0.5)*0.05, 0.02+Math.random()*0.05, (Math.random()-0.5)*0.05,
+        0.2+Math.random()*0.3, [0.24,0.59,1]
+      );
+    }
+  });
+
+  // Mineral pulse
+  if (mineralGroups) mineralGroups.forEach(g=>{
+    const pulse=0.08+Math.sin(time*0.002+g.pulseOff)*0.04;
+    g.group.children.forEach(c=>{ if (c.geometry&&c.geometry.type==='CircleGeometry') c.material.opacity=pulse; });
+  });
+
+  if (particleSystem) updateParticles(dt);
+
+  // Dust
+  if (dust) {
+    const dp=dust.positions;
+    for (let i=0;i<dust.count;i++) {
+      dp[i*3]+=Math.sin(time*0.0003+i)*0.003;
+      dp[i*3+1]+=Math.sin(time*0.0005+i*0.5)*0.001;
+      dp[i*3+2]+=Math.cos(time*0.0004+i*0.7)*0.003;
+      if (dp[i*3]>25) dp[i*3]=-25; if (dp[i*3]<-25) dp[i*3]=25;
+      if (dp[i*3+2]>25) dp[i*3+2]=-25; if (dp[i*3+2]<-25) dp[i*3+2]=25;
+    }
+    dust.mesh.geometry.attributes.position.needsUpdate=true;
+  }
+
+  mineralLight.intensity=0.7+Math.sin(time*0.003)*0.15;
+
+  // Astronaut hover
+  scene.children.forEach(child => {
+    if (child.userData && child.userData.isHovering) {
+      child.position.y = child.userData.baseY + Math.sin(time * 0.001) * 0.3;
+    }
+  });
+
+  // Repair SCV - orbit + repair state machine
+  const repairSCV = scene.userData.repairSCV;
+  const repairSt = scene.userData.repairState;
+  if (repairSCV && repairSt) {
+    repairSt.timer += dt;
+    if (repairSt.phase === 'move') {
+      // Move toward next waypoint
+      const target = repairSt.waypoints[repairSt.targetIdx];
+      const dx = target.x - repairSCV.position.x;
+      const dz = target.z - repairSCV.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      // Face toward target
+      repairSCV.rotation.y = Math.atan2(dx, dz);
+      if (dist < 0.15) {
+        // Arrived at waypoint → start repairing
+        repairSCV.position.x = target.x;
+        repairSCV.position.z = target.z;
+        repairSCV.rotation.y = Math.atan2(repairSCV.position.x - repairSt.waypoints[0].x,
+                                           repairSCV.position.z - repairSt.waypoints[0].z) + Math.PI;
+        repairSt.phase = 'repair';
+        repairSt.timer = 0;
+        repairSt.repairDuration = 2500 + Math.random() * 2000;
+      } else {
+        const step = repairSt.moveSpeed * dt;
+        repairSCV.position.x += (dx / dist) * step * dist;
+        repairSCV.position.z += (dz / dist) * step * dist;
+      }
+      repairSCV.position.y = 0;
+    } else {
+      // Repairing - stay put, face building, shake + sparks
+      repairSCV.position.y = Math.sin(time * 0.006) * 0.05;
+      repairSCV.rotation.z = Math.sin(time * 0.008) * 0.02;
+      if (Math.random() > 0.5) {
+        spawnParticle(
+          repairSCV.position.x + (Math.random() - 0.5) * 0.5,
+          1.5 + Math.random() * 1.5,
+          repairSCV.position.z + (Math.random() - 0.5) * 0.5,
+          (Math.random() - 0.5) * 0.15,
+          0.08 + Math.random() * 0.12,
+          (Math.random() - 0.5) * 0.15,
+          0.15 + Math.random() * 0.25,
+          Math.random() > 0.3 ? [1, 0.8, 0.2] : [1, 0.5, 0.1]
+        );
+      }
+      if (repairSt.timer >= repairSt.repairDuration) {
+        // Done repairing → move to next waypoint
+        repairSt.phase = 'move';
+        repairSt.timer = 0;
+        repairSt.targetIdx = (repairSt.targetIdx + 1) % repairSt.waypoints.length;
+        repairSt.moveSpeed = 0.0006 + Math.random() * 0.0002;
+      }
+    }
+  }
+
+  renderer.render(scene,camera);
+}
+
+// =============================================
+// LOAD MODELS & START
+// =============================================
+const loadingBar = document.getElementById('loading-bar');
+
+function buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl) {
+  scvTemplate = scvTmpl;
+  createGround();
+  commandCenter = createCommandCenter(ccTmpl);
+  mineralGroups = createMinerals(mineralTmpl);
+  createBuilding2(building2Tmpl);
+  createHouse(houseTmpl);
+  createAstronaut(astronautTmpl);
+  createAircraft(aircraftTmpl);
+  if (!scvTemplate) {
+    window.cloneSCV = function() {
+      const wrapper = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(TILE*0.7,TILE*0.5,TILE*0.7),
+        new THREE.MeshStandardMaterial({color:0xc0a060,roughness:0.5,metalness:0.5})
+      );
+      body.position.y=TILE*0.25; body.castShadow=true; wrapper.add(body);
+      const carryLight=new THREE.PointLight(0x4488ff,0,2);
+      carryLight.position.set(0,TILE*0.5,-TILE*0.3); wrapper.add(carryLight);
+      wrapper.userData.carryLight=carryLight;
+      const carryMat=new THREE.MeshBasicMaterial({color:0x4488ff,transparent:true,opacity:0});
+      const carry=new THREE.Mesh(new THREE.SphereGeometry(TILE*0.1,8,8),carryMat);
+      carry.position.set(0,TILE*0.55,-TILE*0.35); wrapper.add(carry);
+      wrapper.userData.carryMat=carryMat;
+      const exhaustMat=new THREE.MeshBasicMaterial({color:0xff6622,transparent:true,opacity:0});
+      const exhaust=new THREE.Mesh(new THREE.ConeGeometry(TILE*0.08,TILE*0.15,6),exhaustMat);
+      exhaust.rotation.x=Math.PI/2; exhaust.position.set(0,TILE*0.25,-TILE*0.5);
+      wrapper.add(exhaust); wrapper.userData.exhaustMat=exhaustMat;
+      return wrapper;
+    };
+  }
+  scvs = createSCVs(mineralGroups);
+  // 静止矿车 - 放在 CC 旁边
+  const staticSCV = cloneSCV();
+  if (staticSCV) {
+    staticSCV.position.set(2.6, 0, 4.6);
+    staticSCV.rotation.y = Math.PI; // 朝向侧面，方便辨识
+    staticSCV.userData.displayName = '小龙虾';
+    staticSCV.userData.isStatic = true;
+    scene.add(staticSCV);
+    scene.userData.staticSCV = staticSCV;
+    console.log('[StaticSCV] 已放置于', staticSCV.position.x, staticSCV.position.z);
+  } else {
+    console.warn('[StaticSCV] cloneSCV 返回 null，scvTemplate 不可用');
+  }
+  particleSystem = initParticles();
+  dust = createDust();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('ui').style.display = 'block';
+  requestAnimationFrame(animate);
+}
+
+if (typeof THREE.GLTFLoader === 'undefined') {
+  console.warn('GLTFLoader not available, using fallback for all');
+  buildScene(null, null, null, null, null, null);
+} else {
+  const loader = new THREE.GLTFLoader();
+  let loaded = 0, total = 7;
+  let scvTmpl = null, ccTmpl = null, mineralTmpl = null, astronautTmpl = null, building2Tmpl = null, houseTmpl = null, aircraftTmpl = null;
+
+  function tryBuild() {
+    loaded++;
+    if (loaded >= total) buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl);
+  }
+
+  // Safety timeout: if any model fails to load/error, still build scene after 12s
+  const safetyTimeout = setTimeout(() => {
+    console.warn('Safety timeout reached, building scene with loaded models');
+    loaded = total;
+    buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl);
+  }, 12000);
+
+  function onProgress(xhr) {
+    const pct = xhr.total > 0 ? (xhr.loaded / xhr.total) : 0;
+    loadingBar.style.width = ((loaded + pct) / total * 100) + '%';
+  }
+
+  // Load SCV model
+  loader.load('scv_model.glb',
+    (gltf) => { scvTmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('SCV model load error:', err); tryBuild(); }
+  );
+
+  // Load CC model
+  loader.load('cc_model.glb',
+    (gltf) => { ccTmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('CC model load error:', err); tryBuild(); }
+  );
+
+  // Load Crystal model
+  loader.load('crystal_model.glb',
+    (gltf) => { mineralTmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('Crystal model load error:', err); tryBuild(); }
+  );
+
+  // Load Astronaut model
+  loader.load('astronaut_model.glb',
+    (gltf) => { astronautTmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('Astronaut model load error:', err); tryBuild(); }
+  );
+
+  // Load Building 2 model
+  loader.load('building2_model.glb',
+    (gltf) => { building2Tmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('Building 2 model load error:', err); tryBuild(); }
+  );
+
+  // Load House model
+  loader.load('house_model.glb',
+    (gltf) => { houseTmpl = gltf.scene; tryBuild(); },
+    onProgress,
+    (err) => { console.error('House model load error:', err); tryBuild(); }
+  );
+
+  // Load Aircraft model
+  loader.load('aircraft_model.glb',
+    (gltf) => { aircraftTmpl = gltf.scene; clearTimeout(safetyTimeout); tryBuild(); },
+    onProgress,
+    (err) => { console.error('Aircraft model load error:', err); clearTimeout(safetyTimeout); tryBuild(); }
+  );
+}
+
+// =============================================
+// RESIZE
+// =============================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// =============================================
+// 坐标拾取工具
+// =============================================
+(function() {
+  const btn      = document.getElementById('coord-btn');
+  const panel    = document.getElementById('coord-panel');
+  const cxEl     = document.getElementById('cx');
+  const czEl     = document.getElementById('cz');
+  const cursor   = document.getElementById('coord-cursor');
+  const raycaster = new THREE.Raycaster();
+  const mouse     = new THREE.Vector2();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0 地面
+  let active = false;
+
+  btn.addEventListener('click', () => {
+    active = !active;
+    btn.classList.toggle('active', active);
+    btn.textContent = active ? '✖ 退出拾取' : '📐 坐标拾取';
+    panel.style.display = active ? 'block' : 'none';
+    cursor.style.display = active ? 'block' : 'none';
+    // 拾取模式下禁用轨道控制，避免拖拽干扰
+    if (typeof controls !== 'undefined') controls.enabled = !active;
+  });
+
+  // 移动时显示十字准星跟随鼠标
+  window.addEventListener('mousemove', e => {
+    if (!active) return;
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top  = e.clientY + 'px';
+
+    // 实时预览坐标
+    mouse.set(
+      (e.clientX / window.innerWidth)  * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const pt = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, pt);
+    if (pt) {
+      cxEl.textContent = pt.x.toFixed(1);
+      czEl.textContent = pt.z.toFixed(1);
+    }
+  });
+
+  // 点击锁定坐标并复制到剪贴板
+  window.addEventListener('click', e => {
+    if (!active) return;
+    // 排除点击按钮本身
+    if (e.target === btn) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth)  * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const pt = new THREE.Vector3();
+    raycaster.ray.intersectPlane(groundPlane, pt);
+    if (!pt) return;
+
+    const x = pt.x.toFixed(1);
+    const z = pt.z.toFixed(1);
+    cxEl.textContent = x;
+    czEl.textContent = z;
+
+    // 复制到剪贴板
+    const txt = `(${x}, ${z})`;
+    navigator.clipboard && navigator.clipboard.writeText(txt).then(() => {
+      panel.innerHTML = `✅ 已复制 <span>${txt}</span>`;
+      setTimeout(() => {
+        panel.innerHTML = `📍 点击位置：X = <span id="cx">${x}</span> &nbsp; Z = <span id="cz">${z}</span>`;
+      }, 1500);
+    });
+  });
+})();
+
+// =============================================
+// MINERAL CLICK DETECTION
+// =============================================
+(function() {
+  const panel = document.getElementById('mineral-panel');
+  const listEl = document.getElementById('mineral-panel-list');
+  const closeBtn = document.getElementById('mineral-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  // Close button
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.style.display = 'none';
+    panelOpen = false;
+  });
+
+  // Collect all mineral meshes for raycasting
+  function getMineralMeshes() {
+    const meshes = [];
+    if (!mineralGroups) return meshes;
+    mineralGroups.forEach(g => {
+      g.group.traverse(child => { if (child.isMesh) meshes.push(child); });
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    // Don't trigger if coord picker is active
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') || e.target.closest('#house-panel') || e.target.closest('#building3-panel') || e.target.closest('#astronaut-panel') || e.target.closest('#cc-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getMineralMeshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('scv-panel').style.display = 'none';
+      document.getElementById('scv-panel').classList.remove('open');
+      document.getElementById('house-panel').style.display = 'none';
+      document.getElementById('house-panel').classList.remove('open');
+      document.getElementById('building3-panel').style.display = 'none';
+      document.getElementById('building3-panel').classList.remove('open');
+      document.getElementById('astronaut-panel').style.display = 'none';
+      document.getElementById('astronaut-panel').classList.remove('open');
+      document.getElementById('cc-panel').style.display = 'none';
+      document.getElementById('cc-panel').classList.remove('open');
+      // Find which cluster was clicked
+      let obj = hits[0].object;
+      while (obj.parent && !obj.userData.isMineralCluster) obj = obj.parent;
+      if (obj.userData.isMineralCluster) {
+        panel.style.display = 'block';
+        panelOpen = true;
+        // AI大模型排行榜 Top 16 (arena.ai)
+        const models = [
+          { name: 'Claude Opus 4.6 Thinking', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://claude.ai&size=32' },
+          { name: 'Claude Opus 4.6', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://claude.ai&size=32' },
+          { name: 'Gemini 3.1 Pro Preview', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://gemini.google.com&size=32' },
+          { name: 'Grok 4.20 Beta1', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://x.ai&size=32' },
+          { name: 'Gemini 3 Pro', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://gemini.google.com&size=32' },
+          { name: 'GPT-5.4 High', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://openai.com&size=32' },
+          { name: 'Grok 4.20 Beta Reasoning', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://x.ai&size=32' },
+          { name: 'GPT-5.2 Chat Latest', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://openai.com&size=32' },
+          { name: 'Gemini 3 Flash', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://gemini.google.com&size=32' },
+          { name: 'Grok 4.20 Multi-Agent', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://x.ai&size=32' },
+          { name: 'Claude Opus 4.5 Thinking', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://claude.ai&size=32' },
+          { name: 'Grok 4.1 Thinking', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://x.ai&size=32' },
+          { name: 'Claude Opus 4.5', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://claude.ai&size=32' },
+          { name: 'Qwen3.5 Max Preview', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://qwen.ai&size=32' },
+          { name: 'Dola Seed 2.0 Pro', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://dola.com&size=32' },
+          { name: 'GPT-5.4', icon: 'https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://openai.com&size=32' },
+        ];
+        listEl.innerHTML = models.map(m =>
+          `<div class="mineral-panel-item"><img src="${m.icon}" onerror="this.style.display='none'"><span>${m.name}</span></div>`
+        ).join('');
+      }
+    } else if (panelOpen) {
+      panel.style.display = 'none';
+      panelOpen = false;
+    }
+  });
+})();
+
+// =============================================
+// SCV CLICK DETECTION - Bottom popup
+// =============================================
+(function() {
+  const panel = document.getElementById('scv-panel');
+  const closeBtn = document.getElementById('scv-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.remove('open');
+    setTimeout(() => { panel.style.display = 'none'; }, 350);
+    panelOpen = false;
+  });
+
+  function getSCVMeshes() {
+    const meshes = [];
+    if (!scvs && !scene.userData.repairSCV && !scene.userData.staticSCV) return meshes;
+    // Collect meshes from all SCV objects
+    const scvObjs = [];
+    scvs.forEach(s => scvObjs.push(s.mesh));
+    if (scene.userData.repairSCV) scvObjs.push(scene.userData.repairSCV);
+    if (scene.userData.staticSCV) scvObjs.push(scene.userData.staticSCV);
+    scvObjs.forEach(obj => {
+      if (obj) obj.traverse(child => { if (child.isMesh) meshes.push(child); });
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#scv-panel') || e.target.closest('#mineral-panel') || e.target.closest('#house-panel') || e.target.closest('#building3-panel') || e.target.closest('#astronaut-panel') || e.target.closest('#cc-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getSCVMeshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('house-panel').style.display = 'none';
+      document.getElementById('house-panel').classList.remove('open');
+      document.getElementById('mineral-panel').style.display = 'none';
+      document.getElementById('building3-panel').style.display = 'none';
+      document.getElementById('building3-panel').classList.remove('open');
+      document.getElementById('astronaut-panel').style.display = 'none';
+      document.getElementById('astronaut-panel').classList.remove('open');
+      document.getElementById('cc-panel').style.display = 'none';
+      document.getElementById('cc-panel').classList.remove('open');
+      panel.style.display = 'block';
+      requestAnimationFrame(() => { panel.classList.add('open'); });
+      panelOpen = true;
+    } else if (panelOpen) {
+      panel.classList.remove('open');
+      setTimeout(() => { panel.style.display = 'none'; }, 350);
+      panelOpen = false;
+    }
+  });
+})();
+
+// =============================================
+// BUILDING 3 CLICK DETECTION - Bottom popup
+// =============================================
+(function() {
+  const panel = document.getElementById('house-panel');
+  const closeBtn = document.getElementById('house-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.remove('open');
+    setTimeout(() => { panel.style.display = 'none'; }, 350);
+    panelOpen = false;
+  });
+
+  function getHouseMeshes() {
+    const meshes = [];
+    scene.traverse(child => {
+      if (child.isMesh && child.parent && child.parent.userData && child.parent.userData.isBuilding2) {
+        meshes.push(child);
+      }
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#house-panel') || e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') || e.target.closest('#building3-panel') || e.target.closest('#astronaut-panel') || e.target.closest('#cc-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getHouseMeshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('scv-panel').style.display = 'none';
+      document.getElementById('scv-panel').classList.remove('open');
+      document.getElementById('mineral-panel').style.display = 'none';
+      document.getElementById('building3-panel').style.display = 'none';
+      document.getElementById('building3-panel').classList.remove('open');
+      document.getElementById('astronaut-panel').style.display = 'none';
+      document.getElementById('astronaut-panel').classList.remove('open');
+      document.getElementById('cc-panel').style.display = 'none';
+      document.getElementById('cc-panel').classList.remove('open');
+      panel.style.display = 'block';
+      requestAnimationFrame(() => { panel.classList.add('open'); });
+      panelOpen = true;
+    } else if (panelOpen) {
+      panel.classList.remove('open');
+      setTimeout(() => { panel.style.display = 'none'; }, 350);
+      panelOpen = false;
+    }
+  });
+})();
+
+// =============================================
+// BUILDING 3 CLICK DETECTION - Bottom popup
+// =============================================
+(function() {
+  const panel = document.getElementById('building3-panel');
+  const closeBtn = document.getElementById('building3-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.remove('open');
+    setTimeout(() => { panel.style.display = 'none'; }, 350);
+    panelOpen = false;
+  });
+
+  function getBuilding3Meshes() {
+    const meshes = [];
+    scene.traverse(child => {
+      if (child.isMesh && child.parent && child.parent.userData && child.parent.userData.isBuilding3) {
+        meshes.push(child);
+      }
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#building3-panel') || e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') || e.target.closest('#house-panel') || e.target.closest('#astronaut-panel') || e.target.closest('#cc-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getBuilding3Meshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('scv-panel').style.display = 'none';
+      document.getElementById('scv-panel').classList.remove('open');
+      document.getElementById('mineral-panel').style.display = 'none';
+      document.getElementById('house-panel').style.display = 'none';
+      document.getElementById('house-panel').classList.remove('open');
+      document.getElementById('astronaut-panel').style.display = 'none';
+      document.getElementById('astronaut-panel').classList.remove('open');
+      document.getElementById('cc-panel').style.display = 'none';
+      document.getElementById('cc-panel').classList.remove('open');
+      panel.style.display = 'block';
+      requestAnimationFrame(() => { panel.classList.add('open'); });
+      panelOpen = true;
+    } else if (panelOpen) {
+      panel.classList.remove('open');
+      setTimeout(() => { panel.style.display = 'none'; }, 350);
+      panelOpen = false;
+    }
+  });
+})();
+
+// =============================================
+// ASTRONAUT CLICK DETECTION - Right side popup
+// =============================================
+(function() {
+  const panel = document.getElementById('astronaut-panel');
+  const closeBtn = document.getElementById('astronaut-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.remove('open');
+    setTimeout(() => { panel.style.display = 'none'; }, 350);
+    panelOpen = false;
+  });
+
+  function getAstronautMeshes() {
+    const meshes = [];
+    scene.traverse(child => {
+      if (child.isMesh && child.parent && child.parent.userData && child.parent.userData.isAstronaut) {
+        meshes.push(child);
+      }
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#astronaut-panel') || e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') || e.target.closest('#house-panel') || e.target.closest('#building3-panel') || e.target.closest('#cc-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getAstronautMeshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('scv-panel').style.display = 'none';
+      document.getElementById('scv-panel').classList.remove('open');
+      document.getElementById('mineral-panel').style.display = 'none';
+      document.getElementById('house-panel').style.display = 'none';
+      document.getElementById('house-panel').classList.remove('open');
+      document.getElementById('building3-panel').style.display = 'none';
+      document.getElementById('building3-panel').classList.remove('open');
+      document.getElementById('cc-panel').style.display = 'none';
+      document.getElementById('cc-panel').classList.remove('open');
+      panel.style.display = 'block';
+      requestAnimationFrame(() => { panel.classList.add('open'); });
+      panelOpen = true;
+    } else if (panelOpen) {
+      panel.classList.remove('open');
+      setTimeout(() => { panel.style.display = 'none'; }, 350);
+      panelOpen = false;
+    }
+  });
+})();
+
+// =============================================
+// COMMAND CENTER CLICK DETECTION - Bottom popup
+// =============================================
+(function() {
+  const panel = document.getElementById('cc-panel');
+  const closeBtn = document.getElementById('cc-panel-close');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let panelOpen = false;
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.remove('open');
+    setTimeout(() => { panel.style.display = 'none'; }, 350);
+    panelOpen = false;
+  });
+
+  function getCCMeshes() {
+    const meshes = [];
+    if (!commandCenter) return meshes;
+    commandCenter.traverse(child => {
+      if (child.isMesh) meshes.push(child);
+    });
+    return meshes;
+  }
+
+  window.addEventListener('click', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) return;
+    if (e.target.closest('#cc-panel') || e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') || e.target.closest('#house-panel') || e.target.closest('#building3-panel') || e.target.closest('#astronaut-panel')) return;
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = getCCMeshes();
+    if (meshes.length === 0) return;
+    const hits = raycaster.intersectObjects(meshes, false);
+
+    if (hits.length > 0) {
+      // Close other panels
+      document.getElementById('scv-panel').style.display = 'none';
+      document.getElementById('scv-panel').classList.remove('open');
+      document.getElementById('mineral-panel').style.display = 'none';
+      document.getElementById('house-panel').style.display = 'none';
+      document.getElementById('house-panel').classList.remove('open');
+      document.getElementById('building3-panel').style.display = 'none';
+      document.getElementById('building3-panel').classList.remove('open');
+      document.getElementById('astronaut-panel').style.display = 'none';
+      document.getElementById('astronaut-panel').classList.remove('open');
+      panel.style.display = 'block';
+      requestAnimationFrame(() => { panel.classList.add('open'); });
+      panelOpen = true;
+    } else if (panelOpen) {
+      panel.classList.remove('open');
+      setTimeout(() => { panel.style.display = 'none'; }, 350);
+      panelOpen = false;
+    }
+  });
+})();
+</script>
+<script>
+// =============================================
+// HOVER TOOLTIP - 鼠标悬停显示元素名称
+// =============================================
+(function() {
+  const tooltip = document.getElementById('hover-tooltip');
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let lastHovered = null;
+
+  // 收集所有可交互对象
+  function getInteractiveMeshes() {
+    const meshes = [];
+    scene.traverse(obj => {
+      if (!obj.isMesh) return;
+      let target = obj;
+      while (target) {
+        if (target.userData && target.userData.displayName) {
+          meshes.push(obj);
+          obj._hoverName = target.userData.displayName;
+          break;
+        }
+        target = target.parent;
+      }
+    });
+    return meshes;
+  }
+
+  let cachedMeshes = [];
+  function refreshCache() { cachedMeshes = getInteractiveMeshes(); }
+
+  setTimeout(() => refreshCache(), 5000);
+  window.addEventListener('click', () => setTimeout(refreshCache, 100));
+
+  // 获取模型的世界坐标包围盒顶部中心
+  function getModelTop(obj) {
+    const box = new THREE.Box3().setFromObject(obj);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    center.y = box.max.y;
+    // 投影到屏幕坐标
+    const projected = center.clone().project(camera);
+    return {
+      x: (projected.x * 0.5 + 0.5) * window.innerWidth,
+      y: (-projected.y * 0.5 + 0.5) * window.innerHeight
+    };
+  }
+
+  window.addEventListener('mousemove', e => {
+    if (document.getElementById('coord-btn').classList.contains('active')) {
+      tooltip.style.display = 'none';
+      lastHovered = null;
+      document.body.style.cursor = '';
+      return;
+    }
+    if (e.target.closest('#mineral-panel') || e.target.closest('#scv-panel') ||
+        e.target.closest('#house-panel') || e.target.closest('#building3-panel') ||
+        e.target.closest('#astronaut-panel') || e.target.closest('#cc-panel')) {
+      tooltip.style.display = 'none';
+      lastHovered = null;
+      document.body.style.cursor = '';
+      return;
+    }
+
+    if (cachedMeshes.length === 0) refreshCache();
+
+    mouse.set(
+      (e.clientX / window.innerWidth) * 2 - 1,
+      -(e.clientY / window.innerHeight) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObjects(cachedMeshes, false);
+
+    if (hits.length > 0) {
+      const hitObj = hits[0].object;
+      const name = hitObj._hoverName;
+      if (name && name !== lastHovered) {
+        tooltip.textContent = name;
+        lastHovered = name;
+      }
+      // 定位到模型顶部
+      const pos = getModelTop(hitObj);
+      tooltip.style.display = 'block';
+      tooltip.style.left = pos.x + 'px';
+      tooltip.style.top = (pos.y - 12) + 'px';
+      tooltip.style.transform = 'translate(-50%, -100%)';
+      document.body.style.cursor = 'pointer';
+    } else {
+      tooltip.style.display = 'none';
+      lastHovered = null;
+      document.body.style.cursor = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>
