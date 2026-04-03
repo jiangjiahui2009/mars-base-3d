@@ -29,6 +29,7 @@ canvas { display: block; }
   margin: 12px auto 0; border-radius: 2px;
 }
 #loading-bar { height: 100%; width: 0%; background: rgba(80,160,255,0.8); border-radius: 2px; transition: width 0.2s; }
+#loading-status { margin-top: 8px; font-size: 11px; color: rgba(80,160,255,0.6); letter-spacing: 1px; min-height: 16px; }
 #corner-tl, #corner-tr, #corner-bl, #corner-br {
   position: absolute; width: 24px; height: 24px;
 }
@@ -515,6 +516,7 @@ canvas { display: block; }
 <div id="loading">
   <div>LOADING ASSETS</div>
   <div id="loading-bar-bg"><div id="loading-bar"></div></div>
+  <div id="loading-status"></div>
 </div>
 <div id="ui" style="display:none">
   <div id="resource-panel">
@@ -524,9 +526,9 @@ canvas { display: block; }
   <div id="corner-tl"></div><div id="corner-tr"></div>
   <div id="corner-bl"></div><div id="corner-br"></div>
   <div id="border"></div>
-  <!-- 坐标选择器 -->
-  <div id="coord-panel">📍 点击位置：X = <span id="cx">--</span> &nbsp; Z = <span id="cz">--</span></div>
-  <button id="coord-btn">📐 坐标拾取</button>
+  <!-- 坐标选择器（隐藏） -->
+  <div id="coord-panel" style="display:none">📍 点击位置：X = <span id="cx">--</span> &nbsp; Z = <span id="cz">--</span></div>
+  <button id="coord-btn" style="display:none">📐 坐标拾取</button>
   <!-- 矿区详情面板 -->
   <div id="mineral-panel" style="display:none">
     <div class="mineral-panel-header">
@@ -1735,47 +1737,57 @@ function animate(time) {
 }
 
 // =============================================
-// LOAD MODELS & START
+// LOAD MODELS & START — Progressive loading
 // =============================================
 const loadingBar = document.getElementById('loading-bar');
+const loadingStatus = document.getElementById('loading-status');
 
-function buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl) {
-  scvTemplate = scvTmpl;
-  createGround();
-  commandCenter = createCommandCenter(ccTmpl);
-  mineralGroups = createMinerals(mineralTmpl);
-  createBuilding2(building2Tmpl);
-  createHouse(houseTmpl);
-  createAstronaut(astronautTmpl);
-  createAircraft(aircraftTmpl);
-  if (!scvTemplate) {
-    window.cloneSCV = function() {
-      const wrapper = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(TILE*0.7,TILE*0.5,TILE*0.7),
-        new THREE.MeshStandardMaterial({color:0xc0a060,roughness:0.5,metalness:0.5})
-      );
-      body.position.y=TILE*0.25; body.castShadow=true; wrapper.add(body);
-      const carryLight=new THREE.PointLight(0x4488ff,0,2);
-      carryLight.position.set(0,TILE*0.5,-TILE*0.3); wrapper.add(carryLight);
-      wrapper.userData.carryLight=carryLight;
-      const carryMat=new THREE.MeshBasicMaterial({color:0x4488ff,transparent:true,opacity:0});
-      const carry=new THREE.Mesh(new THREE.SphereGeometry(TILE*0.1,8,8),carryMat);
-      carry.position.set(0,TILE*0.55,-TILE*0.35); wrapper.add(carry);
-      wrapper.userData.carryMat=carryMat;
-      const exhaustMat=new THREE.MeshBasicMaterial({color:0xff6622,transparent:true,opacity:0});
-      const exhaust=new THREE.Mesh(new THREE.ConeGeometry(TILE*0.08,TILE*0.15,6),exhaustMat);
-      exhaust.rotation.x=Math.PI/2; exhaust.position.set(0,TILE*0.25,-TILE*0.5);
-      wrapper.add(exhaust); wrapper.userData.exhaustMat=exhaustMat;
-      return wrapper;
-    };
-  }
+// Model queue: [name, file, onLoaded]
+// SCV is special — it depends on mineralGroups being ready
+const modelQueue = [
+  { name: 'Command Center',  file: 'cc_model.glb',         key: 'cc' },
+  { name: 'Crystal',         file: 'crystal_model.glb',     key: 'mineral' },
+  { name: 'SCV',             file: 'scv_model.glb',         key: 'scv' },
+  { name: 'Astronaut',       file: 'astronaut_model.glb',   key: 'astronaut' },
+  { name: 'Building',        file: 'building2_model.glb',   key: 'building2' },
+  { name: 'House',           file: 'house_model.glb',       key: 'house' },
+  { name: 'Aircraft',        file: 'aircraft_model.glb',    key: 'aircraft' },
+];
+const totalModels = modelQueue.length;
+let modelsLoaded = 0;
+let mineralReady = false;  // flag: minerals created
+const templates = {};       // loaded model templates
+
+// --- Fallback cloneSCV when scvTemplate is null ---
+function fallbackCloneSCV() {
+  const wrapper = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(TILE*0.7,TILE*0.5,TILE*0.7),
+    new THREE.MeshStandardMaterial({color:0xc0a060,roughness:0.5,metalness:0.5})
+  );
+  body.position.y=TILE*0.25; body.castShadow=true; wrapper.add(body);
+  const carryLight=new THREE.PointLight(0x4488ff,0,2);
+  carryLight.position.set(0,TILE*0.5,-TILE*0.3); wrapper.add(carryLight);
+  wrapper.userData.carryLight=carryLight;
+  const carryMat=new THREE.MeshBasicMaterial({color:0x4488ff,transparent:true,opacity:0});
+  const carry=new THREE.Mesh(new THREE.SphereGeometry(TILE*0.1,8,8),carryMat);
+  carry.position.set(0,TILE*0.55,-TILE*0.35); wrapper.add(carry);
+  wrapper.userData.carryMat=carryMat;
+  const exhaustMat=new THREE.MeshBasicMaterial({color:0xff6622,transparent:true,opacity:0});
+  const exhaust=new THREE.Mesh(new THREE.ConeGeometry(TILE*0.08,TILE*0.15,6),exhaustMat);
+  exhaust.rotation.x=Math.PI/2; exhaust.position.set(0,TILE*0.25,-TILE*0.5);
+  wrapper.add(exhaust); wrapper.userData.exhaustMat=exhaustMat;
+  return wrapper;
+}
+
+// --- Build SCVs and static SCV (called after SCV model + minerals are ready) ---
+function buildSCVs() {
   scvs = createSCVs(mineralGroups);
   // 静止矿车 - 放在 CC 旁边
   const staticSCV = cloneSCV();
   if (staticSCV) {
     staticSCV.position.set(2.6, 0, 4.6);
-    staticSCV.rotation.y = Math.PI; // 朝向侧面，方便辨识
+    staticSCV.rotation.y = Math.PI;
     staticSCV.userData.displayName = '小龙虾';
     staticSCV.userData.isStatic = true;
     scene.add(staticSCV);
@@ -1784,87 +1796,117 @@ function buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, 
   } else {
     console.warn('[StaticSCV] cloneSCV 返回 null，scvTemplate 不可用');
   }
+}
+
+// --- Called when each model finishes loading ---
+function onModelLoaded(key, scene) {
+  templates[key] = scene;
+  modelsLoaded++;
+  loadingBar.style.width = (modelsLoaded / totalModels * 100) + '%';
+  loadingStatus.textContent = modelsLoaded + ' / ' + totalModels + ' models';
+  console.log('[Load] ' + key + ' loaded (' + modelsLoaded + '/' + totalModels + ')');
+
+  // Immediately add to scene
+  switch (key) {
+    case 'cc':
+      commandCenter = createCommandCenter(scene);
+      break;
+    case 'mineral':
+      mineralGroups = createMinerals(scene);
+      mineralReady = true;
+      // If SCV was already loaded, now we can create SCVs
+      if (templates.scv) {
+        scvTemplate = templates.scv;
+        buildSCVs();
+      }
+      break;
+    case 'scv':
+      scvTemplate = scene;
+      // If minerals already ready, create SCVs now
+      if (mineralReady) {
+        buildSCVs();
+      }
+      break;
+    case 'astronaut':
+      createAstronaut(scene);
+      break;
+    case 'building2':
+      createBuilding2(scene);
+      break;
+    case 'house':
+      createHouse(scene);
+      break;
+    case 'aircraft':
+      createAircraft(scene);
+      break;
+  }
+
+  // All done?
+  if (modelsLoaded >= totalModels) onAllLoaded();
+}
+
+function onModelProgress(name, xhr) {
+  const pct = xhr.total > 0 ? (xhr.loaded / xhr.total) : 0;
+  const overall = (modelsLoaded + pct) / totalModels * 100;
+  loadingBar.style.width = overall + '%';
+  loadingStatus.textContent = name + '...';
+}
+
+function onAllLoaded() {
+  console.log('[Load] All models loaded');
+  // Finalize: particles, dust, hide loading, show UI
   particleSystem = initParticles();
   dust = createDust();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('ui').style.display = 'block';
-  requestAnimationFrame(animate);
 }
 
-if (typeof THREE.GLTFLoader === 'undefined') {
-  console.warn('GLTFLoader not available, using fallback for all');
-  buildScene(null, null, null, null, null, null);
-} else {
+// --- Start: create ground immediately, start render loop, then load models progressively ---
+
+// Build ground and add to scene right away
+createGround();
+
+// Set up fallback cloneSCV in case SCV model fails
+if (!window.cloneSCV) window.cloneSCV = fallbackCloneSCV;
+
+// Start the render loop immediately (user sees the terrain + lights)
+requestAnimationFrame(animate);
+
+// Safety timeout: finalize scene after 15s regardless
+const safetyTimeout = setTimeout(() => {
+  console.warn('Safety timeout: finalizing with whatever is loaded');
+  if (!mineralReady) {
+    mineralGroups = createMinerals(null);
+    mineralReady = true;
+  }
+  if (!scvTemplate) {
+    window.cloneSCV = fallbackCloneSCV;
+  }
+  if (scvs.length === 0 && mineralReady) {
+    buildSCVs();
+  }
+  onAllLoaded();
+}, 15000);
+
+// Now load models one by one (sequential — avoids browser parallel connection limits)
+(function loadNext(index) {
+  if (index >= totalModels) return;
+  const m = modelQueue[index];
+  if (typeof THREE.GLTFLoader === 'undefined') {
+    console.warn('GLTFLoader not available, skipping ' + m.name);
+    onModelLoaded(m.key, null);
+    loadNext(index + 1);
+    return;
+  }
   const loader = new THREE.GLTFLoader();
-  let loaded = 0, total = 7;
-  let scvTmpl = null, ccTmpl = null, mineralTmpl = null, astronautTmpl = null, building2Tmpl = null, houseTmpl = null, aircraftTmpl = null;
-
-  function tryBuild() {
-    loaded++;
-    if (loaded >= total) buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl);
-  }
-
-  // Safety timeout: if any model fails to load/error, still build scene after 12s
-  const safetyTimeout = setTimeout(() => {
-    console.warn('Safety timeout reached, building scene with loaded models');
-    loaded = total;
-    buildScene(scvTmpl, ccTmpl, mineralTmpl, astronautTmpl, building2Tmpl, houseTmpl, aircraftTmpl);
-  }, 12000);
-
-  function onProgress(xhr) {
-    const pct = xhr.total > 0 ? (xhr.loaded / xhr.total) : 0;
-    loadingBar.style.width = ((loaded + pct) / total * 100) + '%';
-  }
-
-  // Load SCV model
-  loader.load('scv_model.glb',
-    (gltf) => { scvTmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('SCV model load error:', err); tryBuild(); }
+  loadingStatus.textContent = m.name + '...';
+  loader.load(
+    m.file,
+    (gltf) => { onModelLoaded(m.key, gltf.scene); loadNext(index + 1); },
+    (xhr) => onModelProgress(m.name, xhr),
+    (err) => { console.error(m.name + ' load error:', err); onModelLoaded(m.key, null); loadNext(index + 1); }
   );
-
-  // Load CC model
-  loader.load('cc_model.glb',
-    (gltf) => { ccTmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('CC model load error:', err); tryBuild(); }
-  );
-
-  // Load Crystal model
-  loader.load('crystal_model.glb',
-    (gltf) => { mineralTmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('Crystal model load error:', err); tryBuild(); }
-  );
-
-  // Load Astronaut model
-  loader.load('astronaut_model.glb',
-    (gltf) => { astronautTmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('Astronaut model load error:', err); tryBuild(); }
-  );
-
-  // Load Building 2 model
-  loader.load('building2_model.glb',
-    (gltf) => { building2Tmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('Building 2 model load error:', err); tryBuild(); }
-  );
-
-  // Load House model
-  loader.load('house_model.glb',
-    (gltf) => { houseTmpl = gltf.scene; tryBuild(); },
-    onProgress,
-    (err) => { console.error('House model load error:', err); tryBuild(); }
-  );
-
-  // Load Aircraft model
-  loader.load('aircraft_model.glb',
-    (gltf) => { aircraftTmpl = gltf.scene; clearTimeout(safetyTimeout); tryBuild(); },
-    onProgress,
-    (err) => { console.error('Aircraft model load error:', err); clearTimeout(safetyTimeout); tryBuild(); }
-  );
-}
+})(0);
 
 // =============================================
 // RESIZE
